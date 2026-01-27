@@ -5,6 +5,7 @@
 #include "src/tasks/lora_task.h"
 #include "src/tasks/sensor_task.h"
 #include "src/utils/data_manager.h"
+#include "src/utils/sleep_manager.h"
 
 void setup() {
   Serial.begin(115200);
@@ -14,6 +15,7 @@ void setup() {
   Serial.println("--- Initialisation du Gateway IoT ---");
 
   initDataManager();
+  SleepManager::begin();
 
   // Création des tâches FreeRTOS (Tailles optimisées pour le R4 WiFi)
   BaseType_t res;

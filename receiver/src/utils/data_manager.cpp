@@ -12,6 +12,7 @@ void initDataManager() {
     memset(&currentState, 0, sizeof(SystemData));
     currentState.loraModuleConnected = false;
     currentState.dhtModuleConnected = false;
+    currentState.timeSynced = false;
 }
 
 void updateLocalData(float temp, float hum) {
@@ -41,6 +42,13 @@ void setLoraStatus(bool isConnected) {
 void setDhtStatus(bool isConnected) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
         currentState.dhtModuleConnected = isConnected;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+void setTimeSyncStatus(bool isSynced) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        currentState.timeSynced = isSynced;
         xSemaphoreGive(dataMutex);
     }
 }

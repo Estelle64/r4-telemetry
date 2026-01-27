@@ -14,6 +14,7 @@ struct SystemData {
     // Statut des modules
     bool loraModuleConnected;
     bool dhtModuleConnected;
+    bool timeSynced;
 };
 
 void initDataManager();
@@ -25,6 +26,7 @@ void updateRemoteData(float temp, float hum);
 // Fonctions de mise à jour des statuts
 void setLoraStatus(bool isConnected);
 void setDhtStatus(bool isConnected);
+void setTimeSyncStatus(bool isSynced);
 
 // Fonction pour récupérer tout l'état
 SystemData getSystemData();

@@ -5,6 +5,7 @@
 #include "../web/web_assets.h"
 #include "../utils/data_manager.h"
 #include "../utils/led_matrix_manager.h"
+#include "../utils/time_manager.h"
 
 WiFiServer server(80);
 
@@ -42,10 +43,26 @@ void wifiTask(void *pvParameters) {
                     Serial.println("\n[WiFi] Retry...");
                 }
             }
-            Serial.println("\n[WiFi] Connecté ! IP: ");
+            Serial.println("\n[WiFi] Connecté ! Attente IP...");
+            
+            // Wait for valid IP
+            int ipWait = 0;
+            while (WiFi.localIP() == IPAddress(0,0,0,0) && ipWait < 20) {
+                delay(500);
+                Serial.print(".");
+                ipWait++;
+            }
+            
+            Serial.println("");
+            Serial.print("IP: ");
             Serial.println(WiFi.localIP());
             server.begin();
             
+            // Tentative de synchronisation du temps
+            if (syncTimeWithNTP()) {
+                setTimeSyncStatus(true);
+            }
+
             // Une fois connecté, on éteint la matrice (ou on pourrait afficher un smiley)
             clearLedMatrix();
         }
@@ -96,7 +113,8 @@ void wifiTask(void *pvParameters) {
                                 
                                 // Ajout des status d'erreurs
                                 client.print("\"loraStatus\":"); client.print(data.loraModuleConnected ? "true" : "false"); client.print(",");
-                                client.print("\"dhtStatus\":"); client.print(data.dhtModuleConnected ? "true" : "false");
+                                client.print("\"dhtStatus\":"); client.print(data.dhtModuleConnected ? "true" : "false"); client.print(",");
+                                client.print("\"timeSynced\":"); client.print(data.timeSynced ? "true" : "false");
                                 
                                 client.print("}");
                                 
