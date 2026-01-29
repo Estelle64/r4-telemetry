@@ -1,13 +1,18 @@
 #include "wifi_task.h"
 #include <WiFiS3.h>
 #include <Arduino_FreeRTOS.h>
+#include <PubSubClient.h> // Ajout de la lib MQTT
 #include "../config.h"
 #include "../utils/data_manager.h"
 #include "../utils/led_matrix_manager.h"
 #include "../utils/time_manager.h"
 
-// Pas de serveur Web pour le moment (MQTT plus tard)
-// WiFiServer server(80);
+// ---------------------- MQTT Setup (Merged from colleague) ----------------------
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+const char* mqttServer = "172.20.10.7"; // IP du broker central
+const int mqttPort = 1883;
+const char* mqttTopic = "home/cafet/temp";
 
 void wifiTask(void *pvParameters) {
     // Init Matrix
@@ -26,15 +31,12 @@ void wifiTask(void *pvParameters) {
                 // Si pas connecté, on affiche la température locale sur la matrice
                 SystemData data = getSystemData();
                 int tempToShow = (int)data.localTemperature;
-                
-                // Affichage sur la matrice
                 displayTemperatureOnMatrix(tempToShow);
 
                 delay(500); 
                 Serial.print(".");
                 tryCount++;
                 
-                // Si au bout de 20 essais (10s) toujours rien, on réessaie begin
                 if (tryCount > 20) {
                     WiFi.disconnect();
                     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -43,7 +45,6 @@ void wifiTask(void *pvParameters) {
                 }
             }
             Serial.println("\n[WiFi] Connecté !");
-            
             Serial.print("IP: ");
             Serial.println(WiFi.localIP());
             
@@ -54,12 +55,32 @@ void wifiTask(void *pvParameters) {
 
             // Une fois connecté, on éteint la matrice
             clearLedMatrix();
+            
+            // --- 2. CONFIG MQTT (Après connexion WiFi) ---
+            mqttClient.setServer(mqttServer, mqttPort);
         }
 
-        // --- 2. MAINTIEN / FUTUR MQTT ---
-        // Ici, on pourra ajouter la logique MQTT
-        
-        // Vérification périodique connexion (toutes les 1s)
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
+        // --- 3. GESTION CONNEXION MQTT ---
+        if (!mqttClient.connected()) {
+            Serial.println("[MQTT] Tentative de connexion...");
+            // ID Client aléatoire ou fixe
+            if (mqttClient.connect("ArduinoPasserelle")) {
+                Serial.println("[MQTT] Connecté !");
+            } else {
+                Serial.print("[MQTT] Échec, rc=");
+                Serial.print(mqttClient.state());
+                Serial.println(" (Retrying in 2s)");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue; // On retourne au début pour revérifier le WiFi si besoin
+            }
+        }
+
+        // --- 4. PUBLICATION DES DONNÉES ---
+        if (mqttClient.connected()) {
+            mqttClient.loop(); // Important pour maintenir la connexion et recevoir des messages
+
+            SystemData data = getSystemData();
+
+            // Construction du JSON (Merci à la collègue)
+            String payload = "{";
+            payload += "\"localTemp\":
