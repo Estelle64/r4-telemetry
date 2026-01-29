@@ -1,14 +1,33 @@
 const Broker = require("./broker");
 const { MongoClient } = require("mongodb");
+const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
+const path = require("path");
 
 // --- Configuration ---
-const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://localhost:1883";
+const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://172.20.10.12:1883";
 const TOPIC = "home/cafet/temp";
 const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017";
 const DB_NAME = "telemetryDb";
 const COLLECTION_NAME = "readings";
+const PORT = process.env.PORT || 3000;
 
 async function main() {
+  // --- Express & WebSocket Setup ---
+  const app = express();
+  const server = http.createServer(app);
+  const wss = new WebSocket.Server({ server });
+
+  app.use(express.static(path.join(__dirname, "public")));
+
+  wss.on("connection", (ws) => {
+    console.log("Client WebSocket connecté");
+    ws.on("close", () => {
+      console.log("Client WebSocket déconnecté");
+    });
+  });
+
   console.log("Connexion à la base de données MongoDB...");
   const mongoClient = new MongoClient(MONGO_URL);
 
@@ -33,6 +52,13 @@ async function main() {
 
         await collection.insertOne(newEntry);
         console.log("Données enregistrées dans MongoDB.");
+
+        // Broadcast to all WebSocket clients
+        wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(newEntry));
+          }
+        });
       } catch (error) {
         console.error(
           "Erreur lors du traitement du message ou de l'insertion en base de données:",
@@ -49,6 +75,10 @@ async function main() {
     );
     process.exit(1);
   }
+
+  server.listen(PORT, () => {
+    console.log(`Serveur web démarré sur http://localhost:${PORT}`);
+  });
 
   // Gérer la déconnexion propre
   process.on("SIGINT", async () => {

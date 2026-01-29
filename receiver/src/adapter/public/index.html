@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Telemetry</title>
+    <style>
+        body { font-family: sans-serif; }
+        #data { border: 1px solid #ccc; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Real-time Telemetry</h1>
+    <div id="data">
+        <p>Waiting for data...</p>
+    </div>
+
+    <script>
+        const dataContainer = document.getElementById('data');
+        const ws = new WebSocket(`ws://${window.location.host}`);
+
+        ws.onopen = () => {
+            console.log('WebSocket connection opened');
+            dataContainer.innerHTML = '<p>Connected to server. Waiting for data...</p>';
+        };
+
+        ws.onmessage = (event) => {
+            console.log('Message from server:', event.data);
+            const telemetry = JSON.parse(event.data);
+            const data = telemetry.data;
+            dataContainer.innerHTML = `
+                <h2>Latest Data</h2>
+                <p><strong>Timestamp:</strong> ${new Date(telemetry.timestamp).toLocaleString()}</p>
+                <h3>Local</h3>
+                <p>Temperature: ${data.localTemp}°C</p>
+                <p>Humidity: ${data.localHum}%</p>
+                <h3>Remote</h3>
+                <p>Temperature: ${data.remoteTemp}°C</p>
+                <p>Humidity: ${data.remoteHum}%</p>
+                <h3>Status</h3>
+                <p>LoRa Module: ${data.loraStatus ? 'Connected' : 'Disconnected'}</p>
+                <p>DHT Module: ${data.dhtStatus ? 'Connected' : 'Disconnected'}</p>
+                <p>Time Synced: ${data.timeSynced ? 'Yes' : 'No'}</p>
+                <p>Last LoRa Update: ${data.lastUpdate} ms ago</p>
+            `;
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket connection closed');
+            dataContainer.innerHTML = '<p>Connection closed. Please refresh the page to reconnect.</p>';
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            dataContainer.innerHTML = '<p>Connection error. Please check the console.</p>';
+        };
+    </script>
+</body>
+</html>
