@@ -1,14 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// WiFi Configuration
-#define WIFI_SSID "iPhone de Sean"
-#define WIFI_PASS "devinelol"
-
 // LoRa Configuration (Pins pour Arduino R4 WiFi)
 #define LORA_SS_PIN 10
 #define LORA_RST_PIN 9
 #define LORA_DIO0_PIN 2
+
+// LoRa Protocol
+#define SENSOR_ID 0x01 // Identifiant unique de ce capteur
 
 // Blockchain/Security Configuration
 #define LORA_SHARED_SECRET "IoT_Secure_P@ssw0rd_2026"
@@ -16,6 +15,9 @@
 
 // Sensor Configuration
 #define SENSOR_DHT_PIN 4
-#define SENSOR_DHT_TYPE DHT22 // Change to DHT11 if needed
+#define SENSOR_DHT_TYPE DHT22
+
+// Power Management
+#define DEEP_SLEEP_INTERVAL_SEC 15 // 15 secondes pour debug (au lieu de 600)
 
 #endif // CONFIG_H
