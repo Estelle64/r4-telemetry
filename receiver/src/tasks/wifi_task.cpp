@@ -1,42 +1,39 @@
 #include "wifi_task.h"
 #include <WiFiS3.h>
 #include <Arduino_FreeRTOS.h>
-#include <PubSubClient.h> // Ajout de la lib MQTT
+#include <PubSubClient.h>
 #include "../config.h"
 #include "../utils/data_manager.h"
 #include "../utils/led_matrix_manager.h"
 #include "../utils/time_manager.h"
 
-// ---------------------- MQTT Setup (Merged from colleague) ----------------------
+// ---------------------- MQTT Setup ----------------------
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-const char* mqttServer = "172.20.10.7"; // IP du broker central
+const char* mqttServer = "172.20.10.12"; // IP du broker central
 const int mqttPort = 1883;
 const char* mqttTopic = "home/cafet/temp";
 
+// ---------------------- Task ----------------------
 void wifiTask(void *pvParameters) {
-    // Init Matrix
+    // Initialisation de la matrice LED
     initLedMatrix();
 
-    // Boucle infinie de reconnexion et service
     for (;;) {
-        
-        // --- 1. GESTION CONNEXION WIFI ---
+        // --- 1. CONNEXION WIFI ---
         if (WiFi.status() != WL_CONNECTED) {
             Serial.println("[WiFi] Tentative de connexion...");
             WiFi.begin(WIFI_SSID, WIFI_PASS);
-            
+
             int tryCount = 0;
             while (WiFi.status() != WL_CONNECTED) {
-                // Si pas connecté, on affiche la température locale sur la matrice
                 SystemData data = getSystemData();
-                int tempToShow = (int)data.localTemperature;
-                displayTemperatureOnMatrix(tempToShow);
+                displayTemperatureOnMatrix((int)data.localTemperature);
 
-                delay(500); 
+                delay(500);
                 Serial.print(".");
                 tryCount++;
-                
+
                 if (tryCount > 20) {
                     WiFi.disconnect();
                     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -44,43 +41,58 @@ void wifiTask(void *pvParameters) {
                     Serial.println("\n[WiFi] Retry...");
                 }
             }
+
             Serial.println("\n[WiFi] Connecté !");
             Serial.print("IP: ");
             Serial.println(WiFi.localIP());
-            
-            // Tentative de synchronisation du temps
+
+            // Synchronisation du temps NTP
             if (syncTimeWithNTP()) {
                 setTimeSyncStatus(true);
             }
 
-            // Une fois connecté, on éteint la matrice
             clearLedMatrix();
-            
-            // --- 2. CONFIG MQTT (Après connexion WiFi) ---
-            mqttClient.setServer(mqttServer, mqttPort);
-        }
 
-        // --- 3. GESTION CONNEXION MQTT ---
-        if (!mqttClient.connected()) {
-            Serial.println("[MQTT] Tentative de connexion...");
-            // ID Client aléatoire ou fixe
-            if (mqttClient.connect("ArduinoPasserelle")) {
-                Serial.println("[MQTT] Connecté !");
-            } else {
-                Serial.print("[MQTT] Échec, rc=");
-                Serial.print(mqttClient.state());
-                Serial.println(" (Retrying in 2s)");
-                vTaskDelay(pdMS_TO_TICKS(2000));
-                continue; // On retourne au début pour revérifier le WiFi si besoin
+            // --- 2. CONNEXION MQTT ---
+            mqttClient.setServer(mqttServer, mqttPort);
+            while (!mqttClient.connected()) {
+                Serial.println("[MQTT] Tentative de connexion...");
+                if (mqttClient.connect("ArduinoPasserelle")) {
+                    Serial.println("[MQTT] Connecté !");
+                } else {
+                    Serial.print("[MQTT] Échec, rc=");
+                    Serial.println(mqttClient.state());
+                    delay(2000);
+                }
             }
         }
 
-        // --- 4. PUBLICATION DES DONNÉES ---
+        // --- 3. PUBLICATION DES DONNÉES ---
         if (mqttClient.connected()) {
-            mqttClient.loop(); // Important pour maintenir la connexion et recevoir des messages
-
             SystemData data = getSystemData();
 
-            // Construction du JSON (Merci à la collègue)
             String payload = "{";
-            payload += "\"localTemp\":
+            payload += "\"localTemp\":" + String(data.localTemperature) + ",";
+            payload += "\"localHum\":" + String(data.localHumidity) + ",";
+            payload += "\"remoteTemp\":" + String(data.remoteTemperature) + ",";
+            payload += "\"remoteHum\":" + String(data.remoteHumidity) + ",";
+            payload += "\"lastUpdate\":" + String(millis() - data.lastLoRaUpdate) + ",";
+            payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
+            payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
+            payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
+            payload += "}";
+
+            mqttClient.publish(mqttTopic, payload.c_str());
+        }
+
+        // Maintenir MQTT actif
+        mqttClient.loop();
+
+        // Mise à jour affichage LED
+        SystemData displayData = getSystemData();
+        displayTemperatureOnMatrix((int)displayData.localTemperature);
+
+        // Pause 2 secondes avant prochaine publication
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+}

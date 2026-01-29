@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "iPhone de Sean"
-#define WIFI_PASS "devinelol"
+#define WIFI_SSID "Estelle"
+#define WIFI_PASS "motdepasse"
 
 // LoRa Configuration (Pins pour Arduino R4 WiFi)
 #define LORA_SS_PIN 10
