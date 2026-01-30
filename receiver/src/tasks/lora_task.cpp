@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
+#include <RTC.h> // Required for Time Sync
 #include "../config.h"
 #include "../utils/data_manager.h"
 
@@ -198,36 +199,81 @@ static void processRxLine(String line) {
             );
 
             if (memcmp(receivedHash, calculatedHash, 32) == 0) {
-                // --- 1. VISUALISATION SERIE ---
-                uint8_t sensorId = dataPart[0];
-                float tempVal = (int16_t)(dataPart[2] | (dataPart[3] << 8)) / 100.0;
-                float humVal = (int16_t)(dataPart[4] | (dataPart[5] << 8)) / 100.0;
+                // Determine TYPE
+                uint8_t msgType = dataPart[1];
 
-                Serial.println("\n========== [LoRa] PAQUET RECU & VALIDE ==========");
-                Serial.print("  Source ID   : "); Serial.print(sensorId);
-                
-                if (sensorId == CAFETERIA_ID)      Serial.println(" (CAFETERIA)");
-                else if (sensorId == FABLAB_ID)    Serial.println(" (FABLAB)");
-                else                               Serial.println(" (INCONNU)");
+                if (msgType == 2) { 
+                    // --- TYPE 2: DATA REPORT ---
+                    uint8_t sensorId = dataPart[0];
+                    float tempVal = (int16_t)(dataPart[2] | (dataPart[3] << 8)) / 100.0;
+                    float humVal = (int16_t)(dataPart[4] | (dataPart[5] << 8)) / 100.0;
 
-                Serial.print("  Temperature : "); Serial.print(tempVal); Serial.println(" C");
-                Serial.print("  Humidite    : "); Serial.print(humVal); Serial.println(" %");
-                Serial.println("=================================================");
+                    Serial.println("\n========== [LoRa] PAQUET DATA RECU ==========");
+                    Serial.print("  Source ID   : "); Serial.print(sensorId);
+                    if (sensorId == CAFETERIA_ID)      Serial.println(" (CAFETERIA)");
+                    else if (sensorId == FABLAB_ID)    Serial.println(" (FABLAB)");
+                    else                               Serial.println(" (INCONNU)");
+                    Serial.print("  Temperature : "); Serial.print(tempVal); Serial.println(" C");
+                    Serial.print("  Humidite    : "); Serial.print(humVal); Serial.println(" %");
+                    Serial.println("=============================================");
 
-                // --- 2. STOCKAGE ---
-                updateRemoteData(sensorId, tempVal, humVal);
-                setLoraStatus(true);
-                
-                digitalWrite(LED_PIN, HIGH);
-                delay(50);
-                digitalWrite(LED_PIN, LOW);
+                    updateRemoteData(sensorId, tempVal, humVal);
+                    setLoraStatus(true);
+                    
+                    digitalWrite(LED_PIN, HIGH);
+                    delay(50);
+                    digitalWrite(LED_PIN, LOW);
 
-                // --- 3. ACK ---
-                sendAck(receivedHash);
+                    // Send Standard ACK (Hash)
+                    sendAck(receivedHash);
+
+                } else if (msgType == 3) {
+                    // --- TYPE 3: TIME REQUEST ---
+                    Serial.println("\n[LoRa] TIME SYNC REQUEST RECEIVED.");
+                    
+                    // Get Current Time
+                    RTCTime current;
+                    RTC.getTime(current);
+                    uint32_t now = current.getUnixTime();
+                    Serial.print("  Current Unix Time: "); Serial.println(now);
+
+                    // Prepare Response Packet (Type 4)
+                    // Format: [ID (Target), TYPE (4), TIME (4 Bytes), HMAC (32 Bytes)]
+                    uint8_t respPayload[6];
+                    respPayload[0] = dataPart[0]; // Target = Requestor ID
+                    respPayload[1] = 4;           // Type 4 = Time Response
+                    respPayload[2] = (uint8_t)(now & 0xFF);
+                    respPayload[3] = (uint8_t)((now >> 8) & 0xFF);
+                    respPayload[4] = (uint8_t)((now >> 16) & 0xFF);
+                    respPayload[5] = (uint8_t)((now >> 24) & 0xFF);
+
+                    // Sign
+                    uint8_t respHmac[32];
+                    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), respPayload, 6, respHmac);
+
+                    // To Hex
+                    String hexResp = "";
+                    for(int i=0; i<6; i++) hexResp += byteToHexString(respPayload[i]);
+                    for(int i=0; i<32; i++) hexResp += byteToHexString(respHmac[i]);
+
+                    // Send
+                    Serial.println("[LoRa] Sending Time Response...");
+                    while(Serial1.available()) Serial1.read();
+                    sendAT("AT+TEST=TXLRPKT,\"" + hexResp + "\"");
+                    
+                    // Wait TX DONE
+                    uint32_t tStart = millis();
+                    while(millis() - tStart < 2000) {
+                        String line = Serial1.readStringUntil('\n');
+                        if (line.indexOf("TX DONE") != -1) break;
+                    }
+                    
+                    // Re-arm RX
+                    sendAT("AT+TEST=RXLRPKT");
+                }
 
             } else {
                 Serial.println("[LoRa] ERROR: Invalid HMAC signature.");
-                // We do NOT send ACK if signature is invalid
             }
         } else {
              Serial.println("[LoRa] Ignored: Invalid length (" + String(hexContent.length()) + ")");
@@ -237,37 +283,3 @@ static void processRxLine(String line) {
     }
 }
 
-void loraTask(void *pvParameters) {
-    delay(1000);
-    pinMode(LED_PIN, OUTPUT);
-    Serial1.begin(LORA_BAUD_RATE); 
-    
-    Serial.println("[LoRaTask] Config...");
-    
-    sendAT("AT+MODE=TEST"); delay(100); readResponse();
-    sendAT("AT+TEST=RFCFG,868,SF7,125,12,15,14"); delay(100); readResponse();
-    sendAT("AT+TEST=RXLRPKT"); // RX Mode
-    
-    Serial.println("[LoRaTask] Ready.");
-
-    String lineBuffer = "";
-
-    for (;;) {
-        while (Serial1.available()) {
-            char c = Serial1.read();
-            if (c == '\n') {
-                lineBuffer.trim(); 
-                if (lineBuffer.length() > 0) {
-                    if (lineBuffer.indexOf("+TEST: RX") != -1) {
-                        Serial.println("[LoRa RAW] " + lineBuffer);
-                        processRxLine(lineBuffer);
-                    }
-                }
-                lineBuffer = "";
-            } else {
-                lineBuffer += c;
-            }
-        }
-        vTaskDelay(10); 
-    }
-}
