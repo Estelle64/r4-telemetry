@@ -7,7 +7,7 @@ const path = require("path");
 
 // --- Configuration ---
 const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://172.20.10.12:1883";
-const TOPIC = "home/cafet/temp";
+const TOPIC = "cesi/fablab";
 const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017";
 const DB_NAME = "telemetryDb";
 const COLLECTION_NAME = "readings";

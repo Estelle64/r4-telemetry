@@ -96,9 +96,14 @@ static void processRxLine(String line) {
             if (memcmp(receivedHash, calculatedHash, 32) == 0) {
                 Serial.println("[LoRa] VALID PACKET (Authenticated).");
                 
+                uint8_t sensorId = dataPart[0];
                 int16_t tRaw = (int16_t)(dataPart[2] | (dataPart[3] << 8));
                 int16_t hRaw = (int16_t)(dataPart[4] | (dataPart[5] << 8));
-                updateRemoteData(tRaw / 100.0, hRaw / 100.0);
+
+                Serial.print("[LoRa] Data from Sensor ID: ");
+                Serial.println(sensorId);
+
+                updateRemoteData(sensorId, tRaw / 100.0, hRaw / 100.0);
                 
                 digitalWrite(LED_PIN, HIGH);
                 delay(50);

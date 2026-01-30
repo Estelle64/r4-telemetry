@@ -12,7 +12,8 @@ WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 const char* mqttServer = "172.20.10.12"; // IP du broker central
 const int mqttPort = 1883;
-const char* mqttTopic = "home/cafet/temp";
+const char* mqttCafetTopic = "cesi/cafet";
+const char* mqttFablabTopic = "cesi/fablab";
 
 // ---------------------- Task ----------------------
 void wifiTask(void *pvParameters) {
@@ -28,7 +29,9 @@ void wifiTask(void *pvParameters) {
             int tryCount = 0;
             while (WiFi.status() != WL_CONNECTED) {
                 SystemData data = getSystemData();
-                displayTemperatureOnMatrix((int)data.localTemperature);
+                if (!isnan(data.localTemperature)) {
+                    displayTemperatureOnMatrix((int)data.localTemperature);
+                }
 
                 delay(500);
                 Serial.print(".");
@@ -71,18 +74,39 @@ void wifiTask(void *pvParameters) {
         if (mqttClient.connected()) {
             SystemData data = getSystemData();
 
-            String payload = "{";
-            payload += "\"localTemp\":" + String(data.localTemperature) + ",";
-            payload += "\"localHum\":" + String(data.localHumidity) + ",";
-            payload += "\"remoteTemp\":" + String(data.remoteTemperature) + ",";
-            payload += "\"remoteHum\":" + String(data.remoteHumidity) + ",";
-            payload += "\"lastUpdate\":" + String(millis() - data.lastLoRaUpdate) + ",";
-            payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
-            payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
-            payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
-            payload += "}";
+            // Publish Cafeteria Data
+            if (!isnan(data.cafeteria.temperature)) {
+                String payload = "{";
+                payload += "\"source\":\"cafeteria\",";
+                payload += "\"localTemp\":" + String(data.localTemperature) + ",";
+                payload += "\"localHum\":" + String(data.localHumidity) + ",";
+                payload += "\"remoteTemp\":" + String(data.cafeteria.temperature) + ",";
+                payload += "\"remoteHum\":" + String(data.cafeteria.humidity) + ",";
+                payload += "\"lastUpdate\":" + String(millis() - data.cafeteria.lastUpdate) + ",";
+                payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
+                payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
+                payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
+                payload += "}";
+                mqttClient.publish(mqttCafetTopic, payload.c_str());
+                Serial.println("[MQTT] Published Cafeteria data.");
+            }
 
-            mqttClient.publish(mqttTopic, payload.c_str());
+            // Publish Fablab Data
+            if (!isnan(data.fablab.temperature)) {
+                String payload = "{";
+                payload += "\"source\":\"fablab\",";
+                payload += "\"localTemp\":" + String(data.localTemperature) + ",";
+                payload += "\"localHum\":" + String(data.localHumidity) + ",";
+                payload += "\"remoteTemp\":" + String(data.fablab.temperature) + ",";
+                payload += "\"remoteHum\":" + String(data.fablab.humidity) + ",";
+                payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate) + ",";
+                payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
+                payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
+                payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
+                payload += "}";
+                mqttClient.publish(mqttFablabTopic, payload.c_str());
+                Serial.println("[MQTT] Published Fablab data.");
+            }
         }
 
         // Maintenir MQTT actif
@@ -90,7 +114,9 @@ void wifiTask(void *pvParameters) {
 
         // Mise à jour affichage LED
         SystemData displayData = getSystemData();
-        displayTemperatureOnMatrix((int)displayData.localTemperature);
+        if (!isnan(displayData.localTemperature)) {
+            displayTemperatureOnMatrix((int)displayData.localTemperature);
+        }
 
         // Pause 2 secondes avant prochaine publication
         vTaskDelay(2000 / portTICK_PERIOD_MS);

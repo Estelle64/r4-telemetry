@@ -18,4 +18,8 @@
 #define SENSOR_DHT_PIN 4
 #define SENSOR_DHT_TYPE DHT22 // Change to DHT11 if needed
 
+// Sensor Network IDs
+#define CAFETERIA_ID 1
+#define FABLAB_ID 2
+
 #endif // CONFIG_H
