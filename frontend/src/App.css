@@ -1,5 +1,6 @@
 #root {
-  max-width: 1280px;
+  width: 100%; /* prendre toute la largeur de l’écran */
+  max-width: none; /* supprimer la limite */
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
@@ -42,11 +43,73 @@
 }
 
 /* Custom styles from web_assets.h */
-.value-card { text-align: center; padding: 20px; border-radius: 8px; background: #1f2937; margin-bottom: 20px; position: relative; }
-.value-big { font-size: 2.5rem; font-weight: bold; color: #3b82f6; }
-.unit { font-size: 1rem; color: #9ca3af; }
-.label { font-size: 1.1rem; margin-bottom: 10px; display: block; }
-.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #ef4444; margin-right: 5px;}
-.online { background-color: #22c55e; }
-.error-badge { position: absolute; top: 10px; right: 10px; background-color: #ef4444; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+.value-card {
+  text-align: center;
+  padding: 20px;
+  border-radius: 8px;
+  background: #1f2937;
+  margin-bottom: 20px;
+  position: relative;
+}
+.value-big {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #3b82f6;
+}
+.unit {
+  font-size: 1rem;
+  color: #9ca3af;
+}
+.label {
+  font-size: 1.1rem;
+  margin-bottom: 10px;
+  display: block;
+}
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  margin-right: 5px;
+}
+.online {
+  background-color: #22c55e;
+}
+.error-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #ef4444;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
 
+.telemetry-container {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: nowrap;
+  width: 100%; /* occupe toute la largeur du parent */
+}
+
+article {
+  flex: 1; /* prend tout l’espace disponible équitablement */
+  max-width: none; /* aucune limite */
+}
+
+article header {
+  color: white;
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+/* Texte des labels (Temperature, Humidity) */
+article .label {
+  color: white;
+}
+article footer small {
+  color: white;
+}

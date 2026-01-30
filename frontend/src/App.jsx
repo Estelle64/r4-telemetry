@@ -12,12 +12,12 @@ function App() {
     const ws = new WebSocket(`ws://localhost:3000`);
 
     ws.onopen = () => {
-      console.log("WebSocket connection opened");
-      setConnectionStatus("Connected to server. Waiting for data...");
+      console.log("Connexion WebSocket ouverte");
+      setConnectionStatus("Connecté au serveur. En attente des données...");
     };
 
     ws.onmessage = (event) => {
-      console.log("Message from server:", event.data);
+      console.log("Message du serveur:", event.data);
       try {
         const receivedTelemetry = JSON.parse(event.data);
         if (receivedTelemetry.location === "cafet") {
@@ -25,25 +25,25 @@ function App() {
         } else if (receivedTelemetry.location === "fablab") {
           setFablabTelemetry(receivedTelemetry);
         }
-        setConnectionStatus("Connected");
+        setConnectionStatus("Connecté");
       } catch (e) {
-        console.error("Error parsing WebSocket data:", e);
-        setConnectionStatus("Error processing data. Please check console.");
+        console.error("Erreur de traitement des données:", e);
+        setConnectionStatus("Erreur de données.");
       }
     };
 
     ws.onclose = () => {
-      console.log("WebSocket connection closed");
+      console.log("Connexion WebSocket ouverte");
       setConnectionStatus(
-        "Connection closed. Please refresh the page to reconnect.",
+        "Connexion fermée. Rafraichir la page pour se reconnecter.",
       );
       setCafetTelemetry(null);
       setFablabTelemetry(null);
     };
 
     ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setConnectionStatus("Connection error. Please check the console.");
+      console.error("Erreur WebSocket:", error);
+      setConnectionStatus("Erreur de connexion.");
       setCafetTelemetry(null);
       setFablabTelemetry(null);
     };
@@ -78,23 +78,19 @@ function App() {
         </header>
         <div className="grid">
           <div className="value-card">
-            <span className="label">Temperature</span>
+            <span className="label">Température</span>
             <div className="value-big">
               <span>
-                {telemetryData.data
-                  ? telemetryData.remoteTemp.toFixed(1)
-                  : "N/A"}
+                {telemetryData.data ? telemetryData.data.remoteTemp : "N/A"}
               </span>
               <span className="unit">°C</span>
             </div>
           </div>
           <div className="value-card">
-            <span className="label">Humidity</span>
+            <span className="label">Humidité</span>
             <div className="value-big">
               <span>
-                {telemetryData.data
-                  ? telemetryData.remoteHum.toFixed(1)
-                  : "N/A"}
+                {telemetryData.data ? telemetryData.data.remoteHum : "N/A"}
               </span>
               <span className="unit">%</span>
             </div>
@@ -103,27 +99,11 @@ function App() {
         <footer>
           {telemetryData.timestamp && (
             <small>
-              Timestamp:{" "}
+              Date & Heure:{" "}
               <span>{new Date(telemetryData.timestamp).toLocaleString()}</span>
             </small>
           )}
           <br />
-          <small>
-            Last LoRa Update:{" "}
-            <span>{telemetryData.data ? telemetryData.lastUpdate : "N/A"}</span>{" "}
-            ms ago
-          </small>
-          <br />
-          <small>
-            Time Synced:{" "}
-            <span>
-              {telemetryData.data
-                ? telemetryData.timeSynced
-                  ? "Yes"
-                  : "No"
-                : "N/A"}
-            </span>
-          </small>
         </footer>
       </article>
     );
@@ -140,7 +120,7 @@ function App() {
         <ul>
           <li>
             <span
-              className={`status-dot ${connectionStatus === "Connected" ? "online" : ""}`}
+              className={`status-dot ${connectionStatus === "Connecté" ? "online" : ""}`}
             ></span>
             <span> {connectionStatus}</span>
           </li>
@@ -148,10 +128,10 @@ function App() {
       </nav>
 
       {connectionStatus === "Connected" || cafetTelemetry || fablabTelemetry ? (
-        <>
-          {renderTelemetryArticle(cafetTelemetry, "Cafet Data")}
-          {renderTelemetryArticle(fablabTelemetry, "Fablab Data")}
-        </>
+        <div className="telemetry-container">
+          {renderTelemetryArticle(cafetTelemetry, "Données de la cafétéria")}
+          {renderTelemetryArticle(fablabTelemetry, "Données du Fablab")}
+        </div>
       ) : (
         <article>
           <p>{connectionStatus}</p>

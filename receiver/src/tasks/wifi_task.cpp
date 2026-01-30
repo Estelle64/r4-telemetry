@@ -10,7 +10,7 @@
 // ---------------------- MQTT Setup ----------------------
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-const char* mqttServer = "172.20.10.12"; // IP du broker central
+const char* mqttServer = "10.191.64.101"; // IP du broker central
 const int mqttPort = 1883;
 const char* mqttCafetTopic = "cesi/cafet";
 const char* mqttFablabTopic = "cesi/fablab";
