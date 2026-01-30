@@ -19,7 +19,7 @@
 #define SENSOR_DHT_TYPE DHT22 // Change to DHT11 if needed
 
 // Sensor Network IDs
-#define CAFETERIA_ID 1
-#define FABLAB_ID 2
+#define FABLAB_ID 1    // Sender (Remote)
+#define CAFETERIA_ID 2 // Receiver (Local)
 
 #endif // CONFIG_H

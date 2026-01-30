@@ -27,13 +27,18 @@ void updateLocalData(float temp, float hum) {
 void updateRemoteData(uint8_t sensorId, float temp, float hum) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
         if (sensorId == CAFETERIA_ID) {
+            Serial.println("[DataManager] Mise a jour CAFET -> Memoire Partagee");
             currentState.cafeteria.temperature = temp;
             currentState.cafeteria.humidity = hum;
             currentState.cafeteria.lastUpdate = millis();
         } else if (sensorId == FABLAB_ID) {
+            Serial.println("[DataManager] Mise a jour FABLAB -> Memoire Partagee");
             currentState.fablab.temperature = temp;
             currentState.fablab.humidity = hum;
             currentState.fablab.lastUpdate = millis();
+        } else {
+            Serial.print("[DataManager] ID Inconnu ignore: ");
+            Serial.println(sensorId);
         }
         xSemaphoreGive(dataMutex);
     }
