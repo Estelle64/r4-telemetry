@@ -8,11 +8,12 @@ const crypto = require('crypto');
 const stringify = require('json-stable-stringify');
 
 // --- Configuration ---
+// Conflict resolution: Keeping the IP that works for the current setup, or ENV var.
 const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://172.20.10.12:1883";
 const TOPICS = ["cesi/cafet", "cesi/fablab"];
 const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017";
 const DB_NAME = "telemetryDb";
-const COLLECTION_NAME = "blockchain_readings"; // Changed name to reflect blockchain nature
+const COLLECTION_NAME = "blockchain_readings"; 
 const PORT = process.env.PORT || 3000;
 
 // Genesis Hash (SHA256 of "Genesis Block")
@@ -106,8 +107,6 @@ async function main() {
 
           if (location !== "unknown" && latestLocationData[location]) {
             // Update local state (cache)
-            // Note: The structure received from Receiver has changed to be cleaner (temperature/humidity)
-            // We adapt the update logic based on what keys are present
             
             if (parsedMqttData.temperature !== undefined) {
                  latestLocationData[location].remoteTemp = parsedMqttData.temperature;
@@ -115,7 +114,7 @@ async function main() {
             if (parsedMqttData.humidity !== undefined) {
                  latestLocationData[location].remoteHum = parsedMqttData.humidity;
             }
-            // Fallback for older packet format if necessary, or specific keys
+            // Fallback for older packet format
             if (parsedMqttData.localTemp !== undefined) latestLocationData[location].localTemp = parsedMqttData.localTemp;
             if (parsedMqttData.localHum !== undefined) latestLocationData[location].localHum = parsedMqttData.localHum;
             
@@ -132,7 +131,7 @@ async function main() {
           
           const newIndex = lastBlock ? lastBlock.index + 1 : 0;
           const previousHash = lastBlock ? lastBlock.hash : GENESIS_HASH;
-          const timestamp = new Date().toISOString(); // Use ISO string for consistency
+          const timestamp = new Date().toISOString(); 
           const dataToStore = { ...latestLocationData[location] };
 
           // 2. Calculate Hash
