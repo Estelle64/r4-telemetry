@@ -4,20 +4,21 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
-const crypto = require('crypto');
-const stringify = require('json-stable-stringify');
+const crypto = require("crypto");
+const stringify = require("json-stable-stringify");
 
 // --- Configuration ---
 // Conflict resolution: Keeping the IP that works for the current setup, or ENV var.
-const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://172.20.10.12:1883";
+const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://10.191.64.101:1883";
 const TOPICS = ["cesi/cafet", "cesi/fablab"];
 const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017";
 const DB_NAME = "telemetryDb";
-const COLLECTION_NAME = "blockchain_readings"; 
+const COLLECTION_NAME = "blockchain_readings";
 const PORT = process.env.PORT || 3000;
 
 // Genesis Hash (SHA256 of "Genesis Block")
-const GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
+const GENESIS_HASH =
+  "0000000000000000000000000000000000000000000000000000000000000000";
 
 // Global state to store the latest sensor data for each location
 const latestLocationData = {
@@ -48,9 +49,9 @@ const latestLocationData = {
  * Uses json-stable-stringify to ensure deterministic output for the data object.
  */
 function calculateHash(index, previousHash, timestamp, location, data) {
-    const dataString = stringify(data);
-    const content = index + previousHash + timestamp + location + dataString;
-    return crypto.createHash('sha256').update(content).digest('hex');
+  const dataString = stringify(data);
+  const content = index + previousHash + timestamp + location + dataString;
+  return crypto.createHash("sha256").update(content).digest("hex");
 }
 
 async function main() {
@@ -86,14 +87,12 @@ async function main() {
 
     TOPICS.forEach((subscribedTopic) => {
       broker.subscribe(subscribedTopic, async (topic, message) => {
-        console.log(`Message reçu sur le topic ${topic}:`, message.toString());
-        
         let parsedMqttData;
         try {
-            parsedMqttData = JSON.parse(message.toString());
+          parsedMqttData = JSON.parse(message.toString());
         } catch (e) {
-            console.error("Invalid JSON received:", message.toString());
-            return;
+          console.error("Invalid JSON received:", message.toString());
+          return;
         }
 
         console.log(`Parsed MQTT data for topic ${topic}:`, parsedMqttData);
@@ -107,35 +106,56 @@ async function main() {
 
           if (location !== "unknown" && latestLocationData[location]) {
             // Update local state (cache)
-            
+
             if (parsedMqttData.temperature !== undefined) {
-                 latestLocationData[location].remoteTemp = parsedMqttData.temperature;
+              latestLocationData[location].remoteTemp =
+                parsedMqttData.temperature;
             }
             if (parsedMqttData.humidity !== undefined) {
-                 latestLocationData[location].remoteHum = parsedMqttData.humidity;
+              latestLocationData[location].remoteHum = parsedMqttData.humidity;
             }
             // Fallback for older packet format
-            if (parsedMqttData.localTemp !== undefined) latestLocationData[location].localTemp = parsedMqttData.localTemp;
-            if (parsedMqttData.localHum !== undefined) latestLocationData[location].localHum = parsedMqttData.localHum;
-            
+            if (parsedMqttData.localTemp !== undefined)
+              latestLocationData[location].localTemp = parsedMqttData.localTemp;
+            if (parsedMqttData.localHum !== undefined)
+              latestLocationData[location].localHum = parsedMqttData.localHum;
+
             latestLocationData[location].lastUpdate = new Date().getTime();
-            if(parsedMqttData.loraStatus !== undefined) latestLocationData[location].loraStatus = (parsedMqttData.loraStatus === 'true' || parsedMqttData.loraStatus === true);
-            if(parsedMqttData.dhtStatus !== undefined) latestLocationData[location].dhtStatus = (parsedMqttData.dhtStatus === 'true' || parsedMqttData.dhtStatus === true);
-            if(parsedMqttData.timeSynced !== undefined) latestLocationData[location].timeSynced = (parsedMqttData.timeSynced === 'true' || parsedMqttData.timeSynced === true);
+            if (parsedMqttData.loraStatus !== undefined)
+              latestLocationData[location].loraStatus =
+                parsedMqttData.loraStatus === "true" ||
+                parsedMqttData.loraStatus === true;
+            if (parsedMqttData.dhtStatus !== undefined)
+              latestLocationData[location].dhtStatus =
+                parsedMqttData.dhtStatus === "true" ||
+                parsedMqttData.dhtStatus === true;
+            if (parsedMqttData.timeSynced !== undefined)
+              latestLocationData[location].timeSynced =
+                parsedMqttData.timeSynced === "true" ||
+                parsedMqttData.timeSynced === true;
           }
 
           // --- BLOCKCHAIN INSERTION LOGIC ---
-          
+
           // 1. Get the last block to find previousHash
-          const lastBlock = await collection.findOne({}, { sort: { index: -1 } });
-          
+          const lastBlock = await collection.findOne(
+            {},
+            { sort: { index: -1 } },
+          );
+
           const newIndex = lastBlock ? lastBlock.index + 1 : 0;
           const previousHash = lastBlock ? lastBlock.hash : GENESIS_HASH;
-          const timestamp = new Date().toISOString(); 
+          const timestamp = new Date().toISOString();
           const dataToStore = { ...latestLocationData[location] };
 
           // 2. Calculate Hash
-          const newHash = calculateHash(newIndex, previousHash, timestamp, location, dataToStore);
+          const newHash = calculateHash(
+            newIndex,
+            previousHash,
+            timestamp,
+            location,
+            dataToStore,
+          );
 
           // 3. Create Block
           const newBlock = {
@@ -144,13 +164,17 @@ async function main() {
             location: location,
             data: dataToStore,
             previousHash: previousHash,
-            hash: newHash
+            hash: newHash,
           };
 
-          console.log(`[Blockchain] New Block mined: Index ${newIndex} | Hash: ${newHash.substring(0, 15)}...`);
+          console.log(
+            `[Blockchain] New Block mined: Index ${newIndex} | Hash: ${newHash.substring(0, 15)}...`,
+          );
 
           await collection.insertOne(newBlock);
-          console.log(`Données enregistrées dans MongoDB (Blockchain) pour ${location}.`);
+          console.log(
+            `Données enregistrées dans MongoDB (Blockchain) pour ${location}.`,
+          );
 
           // Broadcast to all WebSocket clients
           wss.clients.forEach((client) => {
