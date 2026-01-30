@@ -2,14 +2,22 @@
 #define DATA_MANAGER_H
 
 #include <Arduino.h>
+#include "../config.h"
+
+struct RemoteSensorData {
+    float temperature = NAN;
+    float humidity = NAN;
+    uint32_t lastUpdate = 0;
+};
 
 struct SystemData {
     // Valeurs des capteurs
     float localTemperature;
     float localHumidity;
-    float remoteTemperature;
-    float remoteHumidity;
-    uint32_t lastLoRaUpdate;
+    
+    // Données des capteurs distants
+    RemoteSensorData cafeteria;
+    RemoteSensorData fablab;
 
     // Statut des modules
     bool loraModuleConnected;
@@ -21,7 +29,7 @@ void initDataManager();
 
 // Fonctions de mise à jour des données
 void updateLocalData(float temp, float hum);
-void updateRemoteData(float temp, float hum);
+void updateRemoteData(uint8_t sensorId, float temp, float hum);
 
 // Fonctions de mise à jour des statuts
 void setLoraStatus(bool isConnected);

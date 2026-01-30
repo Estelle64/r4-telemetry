@@ -1,5 +1,6 @@
 #include "data_manager.h"
 #include <Arduino_FreeRTOS.h>
+#include "../config.h"
 
 static SystemData currentState;
 static SemaphoreHandle_t dataMutex;
@@ -23,11 +24,17 @@ void updateLocalData(float temp, float hum) {
     }
 }
 
-void updateRemoteData(float temp, float hum) {
+void updateRemoteData(uint8_t sensorId, float temp, float hum) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-        currentState.remoteTemperature = temp;
-        currentState.remoteHumidity = hum;
-        currentState.lastLoRaUpdate = millis();
+        if (sensorId == CAFETERIA_ID) {
+            currentState.cafeteria.temperature = temp;
+            currentState.cafeteria.humidity = hum;
+            currentState.cafeteria.lastUpdate = millis();
+        } else if (sensorId == FABLAB_ID) {
+            currentState.fablab.temperature = temp;
+            currentState.fablab.humidity = hum;
+            currentState.fablab.lastUpdate = millis();
+        }
         xSemaphoreGive(dataMutex);
     }
 }
