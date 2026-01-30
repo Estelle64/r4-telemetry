@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import "./App.css"; // Import the updated CSS
+import { useState, useEffect } from "react";
+import "./App.css";
 
 function App() {
   const [cafetTelemetry, setCafetTelemetry] = useState(null);
