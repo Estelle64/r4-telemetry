@@ -74,38 +74,37 @@ void wifiTask(void *pvParameters) {
         if (mqttClient.connected()) {
             SystemData data = getSystemData();
 
-            // Publish Cafeteria Data
-            if (!isnan(data.cafeteria.temperature)) {
+            // 1. PUBLICATION CAFETERIA (C'est nous, le Receiver/Local)
+            // On envoie si le capteur local fonctionne
+            if (!isnan(data.localTemperature)) {
+                Serial.println("[MQTT] >>> Envoi Topic 'cesi/cafet' (Source: LOCALE)");
+                
                 String payload = "{";
                 payload += "\"source\":\"cafeteria\",";
-                payload += "\"localTemp\":" + String(data.localTemperature) + ",";
-                payload += "\"localHum\":" + String(data.localHumidity) + ",";
-                payload += "\"remoteTemp\":" + String(data.cafeteria.temperature) + ",";
-                payload += "\"remoteHum\":" + String(data.cafeteria.humidity) + ",";
-                payload += "\"lastUpdate\":" + String(millis() - data.cafeteria.lastUpdate) + ",";
+                payload += "\"temperature\":" + String(data.localTemperature) + ",";
+                payload += "\"humidity\":" + String(data.localHumidity) + ",";
+                // Metadonnées système (utiles pour le monitoring de la passerelle)
                 payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
                 payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
                 payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
                 payload += "}";
+                
                 mqttClient.publish(mqttCafetTopic, payload.c_str());
-                Serial.println("[MQTT] Published Cafeteria data.");
             }
 
-            // Publish Fablab Data
+            // 2. PUBLICATION FABLAB (C'est le Sender distant)
+            // On envoie seulement si on a reçu des données LoRa valides pour le Fablab
             if (!isnan(data.fablab.temperature)) {
+                Serial.println("[MQTT] >>> Envoi Topic 'cesi/fablab' (Source: LoRa DISTANT)");
+                
                 String payload = "{";
                 payload += "\"source\":\"fablab\",";
-                payload += "\"localTemp\":" + String(data.localTemperature) + ",";
-                payload += "\"localHum\":" + String(data.localHumidity) + ",";
-                payload += "\"remoteTemp\":" + String(data.fablab.temperature) + ",";
-                payload += "\"remoteHum\":" + String(data.fablab.humidity) + ",";
-                payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate) + ",";
-                payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
-                payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
-                payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
+                payload += "\"temperature\":" + String(data.fablab.temperature) + ",";
+                payload += "\"humidity\":" + String(data.fablab.humidity) + ",";
+                payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate);
                 payload += "}";
+                
                 mqttClient.publish(mqttFablabTopic, payload.c_str());
-                Serial.println("[MQTT] Published Fablab data.");
             }
         }
 
