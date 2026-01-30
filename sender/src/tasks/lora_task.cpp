@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
+#include <RTC.h>
 #include "../config.h"
 #include "../utils/data_manager.h"
 #include "../utils/sleep_manager.h"
@@ -142,6 +143,100 @@ static String readResponse(uint16_t timeout = 2000) {
 
 // --- LORA LOGIC ---
 
+// Request Time from Receiver
+// Packet: [ID, TYPE=3, 0,0,0,0 (Padding), HMAC]
+static void requestTimeSync() {
+    Serial.println("[LoRa] Requesting Time Sync...");
+    
+    // 1. Prepare Data
+    uint8_t payload[6]; 
+    payload[0] = SENSOR_ID;
+    payload[1] = 3; // Type 3 = Time Request
+    memset(&payload[2], 0, 4); // Padding
+
+    // 2. Sign Data (HMAC)
+    uint8_t hmac[32];
+    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), payload, 6, hmac);
+
+    // 3. Build Hex String
+    String hexPayload = "";
+    for(int i=0; i<6; i++) hexPayload += byteToHexString(payload[i]);
+    for(int i=0; i<32; i++) hexPayload += byteToHexString(hmac[i]);
+
+    // 4. Send
+    while(Serial1.available()) Serial1.read();
+    sendAT("AT+TEST=TXLRPKT,\"" + hexPayload + "\"");
+
+    // 5. Wait TX DONE
+    uint32_t tStart = millis();
+    bool txDone = false;
+    while(millis() - tStart < 3000) {
+        String line = Serial1.readStringUntil('\n');
+        if (line.indexOf("TX DONE") != -1) {
+            txDone = true; break;
+        }
+    }
+    if(!txDone) { Serial.println("[LoRa] TX Error during sync."); return; }
+
+    // 6. Wait for Response (Type 4)
+    Serial.println("[LoRa] Waiting for Time Response...");
+    sendAT("AT+TEST=RXLRPKT");
+    
+    tStart = millis();
+    // Wait longer for sync (e.g. 5s)
+    while(millis() - tStart < 5000) {
+        if (Serial1.available()) {
+            char c = Serial1.read();
+            if (c == '\n') {
+                String line = Serial1.readStringUntil('\n'); // Should catch full line? 
+                // Wait, process char by char buffer better
+            }
+        }
+        // Simplified parsing loop reused from sendSecurePacket but adapted
+        // Actually let's just do a simple buffer read like before
+    }
+    
+    // RE-IMPLEMENTING SIMPLE READ LOOP FOR SYNC
+    String rxBuffer = "";
+    tStart = millis();
+    while(millis() - tStart < 5000) {
+        while(Serial1.available()) {
+            char c = Serial1.read();
+            rxBuffer += c;
+            if (c == '\n') {
+                if (rxBuffer.indexOf("+TEST: RX \"") != -1) {
+                    int first = rxBuffer.indexOf('"');
+                    int last = rxBuffer.lastIndexOf('"');
+                    if(first != -1 && last > first) {
+                        String hexContent = rxBuffer.substring(first+1, last);
+                        if(hexContent.length() == 76) {
+                            // Decode
+                            uint8_t packet[38];
+                            for(int i=0; i<38; i++) {
+                                String b = hexContent.substring(i*2, i*2+2);
+                                packet[i] = (uint8_t)strtol(b.c_str(), NULL, 16);
+                            }
+                            
+                            // Check Type
+                            if(packet[1] == 4) { // Time Response
+                                uint32_t receivedTime = packet[2] | (packet[3] << 8) | (packet[4] << 16) | (packet[5] << 24);
+                                Serial.print("[LoRa] Time Sync Success! Unix Time: ");
+                                Serial.println(receivedTime);
+                                
+                                RTCTime timeToSet(receivedTime);
+                                RTC.setTime(timeToSet);
+                                return; 
+                            }
+                        }
+                    }
+                }
+                rxBuffer = "";
+            }
+        }
+    }
+    Serial.println("[LoRa] Time Sync Failed (Timeout).");
+}
+
 // Send Packet: [ID, Type, T_low, T_high, H_low, H_high] + [HMAC(32)]
 static bool sendSecurePacket(float temp, float hum) {
     // 1. Prepare Data
@@ -244,6 +339,10 @@ void loraTask(void *pvParameters) {
     sendAT("AT+MODE=TEST"); delay(100); readResponse();
     sendAT("AT+TEST=RFCFG,868,SF7,125,12,15,14"); delay(100); readResponse();
     Serial.println("[LoRaTask] Ready.");
+
+    // --- TIME SYNC AT STARTUP ---
+    requestTimeSync();
+    // ----------------------------
 
     for (;;) {
         SensorData data = getSensorData();
