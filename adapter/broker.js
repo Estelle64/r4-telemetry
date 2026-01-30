@@ -7,7 +7,7 @@ class Broker {
 
     this.client.on('message', (topic, message) => {
         if (this.subscriptions.has(topic)) {
-            this.subscriptions.get(topic).forEach(callback => callback(message));
+            this.subscriptions.get(topic).forEach(callback => callback(topic, message));
         }
     });
   }
