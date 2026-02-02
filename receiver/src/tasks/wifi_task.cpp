@@ -4,7 +4,6 @@
 #include <PubSubClient.h>
 #include "../config.h"
 #include "../utils/data_manager.h"
-#include "../utils/led_matrix_manager.h"
 #include "../utils/time_manager.h"
 
 // ---------------------- MQTT Setup ----------------------
@@ -17,8 +16,6 @@ const char* mqttFablabTopic = "cesi/fablab";
 
 // ---------------------- Task ----------------------
 void wifiTask(void *pvParameters) {
-    // Initialisation de la matrice LED
-    initLedMatrix();
 
     for (;;) {
         // --- 1. CONNEXION WIFI ---
@@ -28,11 +25,6 @@ void wifiTask(void *pvParameters) {
 
             int tryCount = 0;
             while (WiFi.status() != WL_CONNECTED) {
-                SystemData data = getSystemData();
-                if (!isnan(data.localTemperature)) {
-                    displayTemperatureOnMatrix((int)data.localTemperature);
-                }
-
                 delay(500);
                 Serial.print(".");
                 tryCount++;
@@ -53,8 +45,6 @@ void wifiTask(void *pvParameters) {
             if (syncTimeWithNTP()) {
                 setTimeSyncStatus(true);
             }
-
-            clearLedMatrix();
 
             // --- 2. CONNEXION MQTT ---
             mqttClient.setServer(mqttServer, mqttPort);
@@ -110,12 +100,6 @@ void wifiTask(void *pvParameters) {
 
         // Maintenir MQTT actif
         mqttClient.loop();
-
-        // Mise à jour affichage LED
-        SystemData displayData = getSystemData();
-        if (!isnan(displayData.localTemperature)) {
-            displayTemperatureOnMatrix((int)displayData.localTemperature);
-        }
 
         // Pause 2 secondes avant prochaine publication
         vTaskDelay(2000 / portTICK_PERIOD_MS);

@@ -8,7 +8,14 @@
 // LoRa Configuration (Pins pour Arduino R4 WiFi)
 #define LORA_SS_PIN 10
 #define LORA_RST_PIN 9
-#define LORA_DIO0_PIN 2
+// Note: User uses D2 for buttons. Moving DIO0 definition to avoid conflict, 
+// though check if physical wiring requires this pin.
+#define LORA_DIO0_PIN 5 
+
+// UI Configuration (Grove Buttons)
+#define BUTTON_LEFT_PIN 2
+#define BUTTON_RIGHT_PIN 3
+#define MENU_TIMEOUT_MS 10000
 
 // Blockchain/Security Configuration
 #define LORA_SHARED_SECRET "IoT_Secure_P@ssw0rd_2026"

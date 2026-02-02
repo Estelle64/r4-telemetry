@@ -3,7 +3,13 @@
 #include "src/config.h"
 #include "src/tasks/wifi_task.h"
 #include "src/tasks/lora_task.h"
+#include <Arduino.h>
+#include <Arduino_FreeRTOS.h>
+#include "src/config.h"
+#include "src/tasks/wifi_task.h"
+#include "src/tasks/lora_task.h"
 #include "src/tasks/sensor_task.h"
+#include "src/tasks/ui_task.h"
 #include "src/utils/data_manager.h"
 #include "src/utils/sleep_manager.h"
 
@@ -20,7 +26,7 @@ void setup() {
   // Création des tâches FreeRTOS (Tailles optimisées pour le R4 WiFi)
   BaseType_t res;
 
-  // WiFi Task: Gestion du Serveur Web et de la Matrice LED (quand déconnecté)
+  // WiFi Task: Gestion du Serveur Web (La matrice LED est maintenant gérée par uiTask)
   res = xTaskCreate(wifiTask, "WiFiTask", 512, NULL, 1, NULL);
   if (res == pdPASS) Serial.println("Tâche WiFi créée.");
   else Serial.println("ERREUR: Echec création tâche WiFi !");
@@ -34,6 +40,11 @@ void setup() {
   res = xTaskCreate(sensorTask, "SensorTask", 256, NULL, 1, NULL);
   if (res == pdPASS) Serial.println("Tâche Sensor créée.");
   else Serial.println("ERREUR: Echec création tâche Sensor !");
+
+  // UI Task: Gestion Boutons & Matrice LED
+  res = xTaskCreate(uiTask, "UITask", 256, NULL, 1, NULL);
+  if (res == pdPASS) Serial.println("Tâche UI créée.");
+  else Serial.println("ERREUR: Echec création tâche UI !");
 
   Serial.println("Démarrage du Scheduler...");
   vTaskStartScheduler();

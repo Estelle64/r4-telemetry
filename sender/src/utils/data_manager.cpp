@@ -2,6 +2,7 @@
 #include <Arduino_FreeRTOS.h>
 
 static SensorData currentData;
+static bool userActive = false;
 static SemaphoreHandle_t dataMutex;
 
 void initDataManager() {
@@ -12,6 +13,7 @@ void initDataManager() {
     currentData.valid = false;
     currentData.temperature = 0.0;
     currentData.humidity = 0.0;
+    userActive = false;
 }
 
 void updateSensorData(float temp, float hum) {
@@ -34,3 +36,20 @@ SensorData getSensorData() {
     }
     return data;
 }
+
+void setUserActive(bool isActive) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        userActive = isActive;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+bool isUserActive() {
+    bool active = false;
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        active = userActive;
+        xSemaphoreGive(dataMutex);
+    }
+    return active;
+}
+
