@@ -1,5 +1,6 @@
 #include "sleep_manager.h"
 #include <WiFiS3.h> // Required to control the ESP32 module
+#include <Arduino_FreeRTOS.h>
 
 // Flag to indicate wake-up source
 volatile bool alarmWakeUp = false;
@@ -48,44 +49,58 @@ void SleepManager::deepSleep(int secondsDuration) {
     Serial.println("[SleepManager] RA4M1: Entering Standby...");
     Serial.flush(); 
 
-    enterStandbyMode();
+    enterStandbyMode(secondsDuration);
 
     // =================================
     // SYSTEM WAKES UP HERE
     // =================================
     
-    // Petite pause pour laisser l'horloge se stabiliser
-    for(volatile int i=0; i<10000; i++); 
-
-    if (alarmWakeUp) {
-        alarmWakeUp = false;
-        Serial.println("[SleepManager] WAKE UP triggered by RTC.");
-    }
+    // Request a software reset to re-initialize everything cleanly
+    Serial.println("[SleepManager] Waking up... Performing System Reset.");
+    Serial.flush();
+    NVIC_SystemReset();
 }
 
-void SleepManager::enterStandbyMode() {
-    // --------------------------------------------------------
-    // DEBUG MODE: FAKE SLEEP
-    // Le vrai Standby semble crasher le système (USB/FreeRTOS)
-    // On simule le sommeil pour valider la logique LoRa en premier.
-    // --------------------------------------------------------
+void SleepManager::enterStandbyMode(uint32_t sleepDurationS) {
+    // 1. Suspendre l'ordonnanceur pour éviter un switch de tâche pendant le réveil
+    vTaskSuspendAll();
+
+    // 2. Configuration réveil (RTC)
+    R_ICU->WUPEN_b.RTCALMWUPEN = 1;
     
-    // On attend la durée prévue (calculée par l'appelant via RTC alarm, 
-    // mais ici on ne peut pas facilement récupérer la durée.
-    // L'appelant fait deepSleep(duration).
-    
-    // Hack: On fait juste un délai bloquant pour simuler le temps qui passe
-    // Attention: deepSleep configure l'alarme RTC, donc l'alarme va quand même sonner !
-    // On doit attendre que l'alarme sonne.
-    
-    Serial.println("[SleepManager] (Fake Sleep) Waiting for RTC Alarm...");
-    while(!alarmWakeUp) {
-        // On attend que l'interruption RTC mette le flag à true
-        // On utilise delay() pour ne pas bloquer les autres tâches ? 
-        // Non, le but du sleep est de TOUT arrêter.
-        // Mais si on veut garder l'USB vivant, on boucle simplement.
-        delay(100); 
-    }
-    
-    // Reset du flag fait par l'appelant deepSleep, mais alarmWakeUp est mis à true par l'ISR
+    // 3. Préparer le dodo
+    R_SYSTEM->PRCR = 0xA503;
+    R_SYSTEM->SBYCR_b.SSBY = 1;
+    R_SYSTEM->PRCR = 0xA500;
+
+    // 4. Arrêt du SysTick
+    SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
+
+    // --- SOMMEIL ---
+    __DSB();
+    __WFI();
+    __ISB();
+    // --- RÉVEIL ---
+
+    // 5. RESTAURER LE SYSTICK IMMÉDIATEMENT
+    SysTick->VAL = 0;
+    SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
+
+    // 6. COMPENSER LE TEMPS DANS FREERTOS (Désactivé)
+    // vTaskStepTick n'est pas disponible dans la config Arduino FreeRTOS par défaut.
+    // Les timers logiciels FreeRTOS seront "en pause" durant le sommeil.
+    // vTaskStepTick(pdMS_TO_TICKS(sleepDurationS * 1000));
+
+    // 7. RELANCER LES PÉRIPHÉRIQUES
+    // Sur RA4M1, après un standby, il est parfois nécessaire de ré-autoriser 
+    // l'accès aux modules si tu vois que le Serial ne répond plus.
+    R_SYSTEM->PRCR = 0xA503;
+    // R_MSTP->MSTPCRB &= ~(1 << 22); // Réactive l'UART si nécessaire (exemple)
+    R_SYSTEM->PRCR = 0xA500;
+
+    // 8. Nettoyage
+    R_ICU->WUPEN_b.RTCALMWUPEN = 0;
+
+    // 9. Reprendre l'ordonnanceur
+    xTaskResumeAll();
 }

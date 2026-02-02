@@ -52,10 +52,10 @@ void SleepManager::deepSleep(int secondsDuration) {
     // SYSTEM WAKES UP HERE
     // =================================
 
-    if (alarmWakeUp) {
-        alarmWakeUp = false;
-        Serial.println("[SleepManager] WAKE UP triggered by RTC.");
-    }
+    // Request a software reset to re-initialize everything cleanly
+    Serial.println("[SleepManager] Waking up... Performing System Reset.");
+    Serial.flush();
+    NVIC_SystemReset();
 }
 
 void SleepManager::enterStandbyMode() {

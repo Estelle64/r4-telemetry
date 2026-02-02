@@ -27,7 +27,7 @@ private:
     static void alarmCallback();
 
     // Low-level register manipulation to enter Standby Mode
-    static void enterStandbyMode();
+    static void enterStandbyMode(uint32_t sleepDurationS);
 };
 
 #endif // SLEEP_MANAGER_H
