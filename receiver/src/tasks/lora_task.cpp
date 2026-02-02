@@ -283,3 +283,32 @@ static void processRxLine(String line) {
     }
 }
 
+void loraTask(void *pvParameters) {
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+
+    Serial.println("[LoRaTask] Initialisation...");
+
+    // 1. Initialisation Serial1 (LoRa)
+    Serial1.begin(LORA_BAUD_RATE);
+    delay(1000);
+
+    // 2. Configuration Module
+    sendAT("AT+TEST=RXLRPKT");
+    delay(500);
+    
+    Serial.println("[LoRaTask] En attente de paquets...");
+
+    for (;;) {
+        if (Serial1.available()) {
+            String line = Serial1.readStringUntil('\n');
+            line.trim();
+            if (line.length() > 0) {
+                processRxLine(line);
+            }
+        }
+        
+        vTaskDelay(10 / portTICK_PERIOD_MS); 
+    }
+}
+
