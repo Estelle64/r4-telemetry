@@ -148,7 +148,43 @@ static String readResponse(uint16_t timeout = 500) {
     return s;
 }
 
+static bool initLoRaModule() {
+    Serial.println("[LoRa] Initialisation du module...");
+    Serial1.begin(LORA_BAUD_RATE);
+    
+    // 1. Test de présence (AT)
+    // On essaie plusieurs fois
+    for (int i = 0; i < 3; i++) {
+        // Vider le buffer
+        while(Serial1.available()) Serial1.read();
+        
+        sendAT("AT");
+        String resp = readResponse(1000);
+        
+        if (resp.indexOf("OK") != -1) {
+            Serial.println("[LoRa] Module détecté !");
+            
+            // 2. Configuration
+            sendAT("AT+MODE=TEST"); delay(100); readResponse();
+            sendAT("AT+TEST=RFCFG,868,SF7,125,12,15,14"); delay(100); readResponse();
+            
+            // 3. Passage en mode réception
+            sendAT("AT+TEST=RXLRPKT");
+            delay(200);
+            readResponse(); // Flush confirm
+
+            return true;
+        }
+        Serial.println("[LoRa] Pas de réponse... tentative " + String(i+1));
+        delay(500);
+    }
+    
+    Serial.println("[LoRa] ERREUR CRITIQUE: Module LoRa non détecté.");
+    return false;
+}
+
 static void sendAck(const uint8_t *hashToSend) {
+// ... (reste des fonctions inchangées)
     String hashStr = hashToString(hashToSend);
     Serial.println("[LoRa] Sending ACK: " + hashStr);
     
@@ -287,16 +323,18 @@ void loraTask(void *pvParameters) {
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
 
-    Serial.println("[LoRaTask] Initialisation...");
+    // Boucle d'initialisation (Retry infini tant que pas connecté)
+    while (true) {
+        if (initLoRaModule()) {
+            setLoraStatus(true);
+            break; // Sortie de la boucle d'init pour aller vers la boucle RX
+        } else {
+            setLoraStatus(false);
+            Serial.println("[LoRaTask] Nouvelle tentative dans 5s...");
+            vTaskDelay(5000 / portTICK_PERIOD_MS);
+        }
+    }
 
-    // 1. Initialisation Serial1 (LoRa)
-    Serial1.begin(LORA_BAUD_RATE);
-    delay(1000);
-
-    // 2. Configuration Module
-    sendAT("AT+TEST=RXLRPKT");
-    delay(500);
-    
     Serial.println("[LoRaTask] En attente de paquets...");
 
     for (;;) {

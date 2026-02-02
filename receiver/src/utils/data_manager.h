@@ -22,6 +22,8 @@ struct SystemData {
     // Statut des modules
     bool loraModuleConnected;
     bool dhtModuleConnected;
+    bool wifiConnected;
+    bool mqttConnected;
     bool timeSynced;
 };
 
@@ -34,6 +36,8 @@ void updateRemoteData(uint8_t sensorId, float temp, float hum);
 // Fonctions de mise à jour des statuts
 void setLoraStatus(bool isConnected);
 void setDhtStatus(bool isConnected);
+void setWifiStatus(bool isConnected);
+void setMqttStatus(bool isConnected);
 void setTimeSyncStatus(bool isSynced);
 
 // Fonction pour récupérer tout l'état

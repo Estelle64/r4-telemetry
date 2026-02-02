@@ -12,92 +12,112 @@ PubSubClient mqttClient(espClient);
 
 // ---------------------- Task ----------------------
 void wifiTask(void *pvParameters) {
+    // Configuration du serveur MQTT
+    mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
 
     for (;;) {
-        // --- 1. CONNEXION WIFI ---
+        // --- 1. GESTION WIFI ---
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("[WiFi] Tentative de connexion...");
+            setWifiStatus(false);
+            setMqttStatus(false); // Si pas de WiFi, MQTT est forcément off
+            
+            Serial.println("[WiFi] Connexion perdue ou non établie. Tentative...");
             WiFi.begin(WIFI_SSID, WIFI_PASS);
 
             int tryCount = 0;
-            while (WiFi.status() != WL_CONNECTED) {
-                delay(500);
+            // On attend max 10 secondes (20 * 500ms)
+            while (WiFi.status() != WL_CONNECTED && tryCount < 20) {
+                vTaskDelay(500 / portTICK_PERIOD_MS);
                 Serial.print(".");
                 tryCount++;
-
-                if (tryCount > 20) {
-                    WiFi.disconnect();
-                    WiFi.begin(WIFI_SSID, WIFI_PASS);
-                    tryCount = 0;
-                    Serial.println("\n[WiFi] Retry...");
+            }
+            
+            if (WiFi.status() == WL_CONNECTED) {
+                Serial.println("\n[WiFi] Connecté ! IP: " + WiFi.localIP().toString());
+                setWifiStatus(true);
+                
+                // Synchro NTP au réveil du WiFi (Première tentative)
+                if (syncTimeWithNTP()) {
+                    setTimeSyncStatus(true);
+                }
+            } else {
+                 Serial.println("\n[WiFi] Échec. Prochaine tentative dans 5s...");
+                 vTaskDelay(5000 / portTICK_PERIOD_MS);
+                 continue; // On recommence la boucle pour re-tester le WiFi
+            }
+        } else {
+            setWifiStatus(true); // WiFi est OK
+            
+            // Si l'heure n'est pas encore synchronisée, on réessaie périodiquement
+            SystemData data = getSystemData();
+            if (!data.timeSynced) {
+                static unsigned long lastNtpTry = 0;
+                if (millis() - lastNtpTry > 60000) { // Retry toutes les 60s
+                    lastNtpTry = millis();
+                    Serial.println("[WiFi] Retry NTP Sync...");
+                    if (syncTimeWithNTP()) {
+                        setTimeSyncStatus(true);
+                    }
                 }
             }
+        }
 
-            Serial.println("\n[WiFi] Connecté !");
-            Serial.print("IP: ");
-            Serial.println(WiFi.localIP());
-
-            // Synchronisation du temps NTP
-            if (syncTimeWithNTP()) {
-                setTimeSyncStatus(true);
-            }
-
-            // --- 2. CONNEXION MQTT ---
-            mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
-            while (!mqttClient.connected()) {
-                Serial.println("[MQTT] Tentative de connexion...");
+        // --- 2. GESTION MQTT ---
+        if (WiFi.status() == WL_CONNECTED) {
+            if (!mqttClient.connected()) {
+                setMqttStatus(false);
+                Serial.println("[MQTT] Connexion au broker...");
+                
                 if (mqttClient.connect("ArduinoPasserelle")) {
                     Serial.println("[MQTT] Connecté !");
+                    setMqttStatus(true);
                 } else {
                     Serial.print("[MQTT] Échec, rc=");
                     Serial.println(mqttClient.state());
-                    delay(2000);
+                    // Délai avant retry MQTT
+                    vTaskDelay(5000 / portTICK_PERIOD_MS);
+                }
+            }
+            
+            if (mqttClient.connected()) {
+                setMqttStatus(true);
+                mqttClient.loop();
+
+                // --- 3. PUBLICATION ---
+                SystemData data = getSystemData();
+
+                // Publication Locale (Cafeteria)
+                if (!isnan(data.localTemperature)) {
+                    String payload = "{";
+                    payload += "\"source\":\"cafeteria\",";
+                    payload += "\"temperature\":" + String(data.localTemperature) + ",";
+                    payload += "\"humidity\":" + String(data.localHumidity) + ",";
+                    payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
+                    payload += "\"wifiStatus\":true,";
+                    payload += "\"mqttStatus\":true";
+                    payload += "}";
+                    
+                    if (mqttClient.publish(MQTT_TOPIC_CAFET, payload.c_str())) {
+                         // Publication réussie
+                    } else {
+                         Serial.println("[MQTT] Erreur lors de la publication Cafet");
+                    }
+                }
+
+                // Publication Distante (Fablab)
+                if (!isnan(data.fablab.temperature)) {
+                    String payload = "{";
+                    payload += "\"source\":\"fablab\",";
+                    payload += "\"temperature\":" + String(data.fablab.temperature) + ",";
+                    payload += "\"humidity\":" + String(data.fablab.humidity) + ",";
+                    payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate);
+                    payload += "}";
+                    
+                    mqttClient.publish(MQTT_TOPIC_FABLAB, payload.c_str());
                 }
             }
         }
 
-        // --- 3. PUBLICATION DES DONNÉES ---
-        if (mqttClient.connected()) {
-            SystemData data = getSystemData();
-
-            // 1. PUBLICATION CAFETERIA (C'est nous, le Receiver/Local)
-            // On envoie si le capteur local fonctionne
-            if (!isnan(data.localTemperature)) {
-                Serial.println("[MQTT] >>> Envoi Topic '" MQTT_TOPIC_CAFET "' (Source: LOCALE)");
-                
-                String payload = "{";
-                payload += "\"source\":\"cafeteria\",";
-                payload += "\"temperature\":" + String(data.localTemperature) + ",";
-                payload += "\"humidity\":" + String(data.localHumidity) + ",";
-                // Metadonnées système (utiles pour le monitoring de la passerelle)
-                payload += "\"loraStatus\":" + String(data.loraModuleConnected ? "true" : "false") + ",";
-                payload += "\"dhtStatus\":" + String(data.dhtModuleConnected ? "true" : "false") + ",";
-                payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
-                payload += "}";
-                
-                mqttClient.publish(MQTT_TOPIC_CAFET, payload.c_str());
-            }
-
-            // 2. PUBLICATION FABLAB (C'est le Sender distant)
-            // On envoie seulement si on a reçu des données LoRa valides pour le Fablab
-            if (!isnan(data.fablab.temperature)) {
-                Serial.println("[MQTT] >>> Envoi Topic '" MQTT_TOPIC_FABLAB "' (Source: LoRa DISTANT)");
-                
-                String payload = "{";
-                payload += "\"source\":\"fablab\",";
-                payload += "\"temperature\":" + String(data.fablab.temperature) + ",";
-                payload += "\"humidity\":" + String(data.fablab.humidity) + ",";
-                payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate);
-                payload += "}";
-                
-                mqttClient.publish(MQTT_TOPIC_FABLAB, payload.c_str());
-            }
-        }
-
-        // Maintenir MQTT actif
-        mqttClient.loop();
-
-        // Pause 2 secondes avant prochaine publication
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
 }

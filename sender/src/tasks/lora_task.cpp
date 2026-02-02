@@ -141,11 +141,36 @@ static String readResponse(uint16_t timeout = 2000) {
     return s;
 }
 
+static bool initLoRaModule() {
+    Serial.println("[LoRa] Initialisation du module...");
+    Serial1.begin(LORA_BAUD_RATE);
+    
+    // Retry Loop
+    for (int i = 0; i < 3; i++) {
+        while(Serial1.available()) Serial1.read(); // Clear buffer
+        
+        sendAT("AT");
+        String resp = readResponse(1000);
+        
+        if (resp.indexOf("OK") != -1) {
+             Serial.println("[LoRa] Module OK.");
+             // Config
+             sendAT("AT+MODE=TEST"); delay(100); readResponse();
+             sendAT("AT+TEST=RFCFG,868,SF7,125,12,15,14"); delay(100); readResponse();
+             return true;
+        }
+        Serial.println("[LoRa] Pas de réponse... Retry.");
+        delay(500);
+    }
+    Serial.println("[LoRa] Echec connexion module.");
+    return false;
+}
+
 // --- LORA LOGIC ---
 
 // Request Time from Receiver
 // Packet: [ID, TYPE=3, 0,0,0,0 (Padding), HMAC]
-static void requestTimeSync() {
+static bool requestTimeSync() {
     Serial.println("[LoRa] Requesting Time Sync...");
     
     // 1. Prepare Data
@@ -176,30 +201,15 @@ static void requestTimeSync() {
             txDone = true; break;
         }
     }
-    if(!txDone) { Serial.println("[LoRa] TX Error during sync."); return; }
+    if(!txDone) { Serial.println("[LoRa] TX Error during sync."); return false; }
 
     // 6. Wait for Response (Type 4)
     Serial.println("[LoRa] Waiting for Time Response...");
     sendAT("AT+TEST=RXLRPKT");
     
-    tStart = millis();
-    // Wait longer for sync (e.g. 5s)
-    while(millis() - tStart < 5000) {
-        if (Serial1.available()) {
-            char c = Serial1.read();
-            if (c == '\n') {
-                String line = Serial1.readStringUntil('\n'); // Should catch full line? 
-                // Wait, process char by char buffer better
-            }
-        }
-        // Simplified parsing loop reused from sendSecurePacket but adapted
-        // Actually let's just do a simple buffer read like before
-    }
-    
-    // RE-IMPLEMENTING SIMPLE READ LOOP FOR SYNC
     String rxBuffer = "";
     tStart = millis();
-    while(millis() - tStart < 5000) {
+    while(millis() - tStart < 3000) { // Reduced timeout to 3s to be less blocking
         while(Serial1.available()) {
             char c = Serial1.read();
             rxBuffer += c;
@@ -210,7 +220,7 @@ static void requestTimeSync() {
                     if(first != -1 && last > first) {
                         String hexContent = rxBuffer.substring(first+1, last);
                         if(hexContent.length() == 76) {
-                            // Decode
+                            // Decode (Simplified for sync check)
                             uint8_t packet[38];
                             for(int i=0; i<38; i++) {
                                 String b = hexContent.substring(i*2, i*2+2);
@@ -225,7 +235,7 @@ static void requestTimeSync() {
                                 
                                 RTCTime timeToSet(receivedTime);
                                 RTC.setTime(timeToSet);
-                                return; 
+                                return true; 
                             }
                         }
                     }
@@ -235,6 +245,7 @@ static void requestTimeSync() {
         }
     }
     Serial.println("[LoRa] Time Sync Failed (Timeout).");
+    return false;
 }
 
 // Send Packet: [ID, Type, T_low, T_high, H_low, H_high] + [HMAC(32)]
@@ -333,18 +344,37 @@ static bool sendSecurePacket(float temp, float hum) {
 void loraTask(void *pvParameters) {
     delay(1000);
     pinMode(LED_PIN, OUTPUT);
-    Serial1.begin(LORA_BAUD_RATE);
+    
+    // Boucle d'initialisation bloquante avec retry
+    while (true) {
+        if (initLoRaModule()) {
+            break;
+        }
+        Serial.println("[LoRaTask] Erreur Init. Nouvelle tentative dans 5s...");
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
 
-    Serial.println("[LoRaTask] Configuring Module...");
-    sendAT("AT+MODE=TEST"); delay(100); readResponse();
-    sendAT("AT+TEST=RFCFG,868,SF7,125,12,15,14"); delay(100); readResponse();
     Serial.println("[LoRaTask] Ready.");
 
     // --- TIME SYNC AT STARTUP ---
-    requestTimeSync();
+    if(requestTimeSync()) {
+        setTimeSyncStatus(true);
+    }
     // ----------------------------
 
+    unsigned long lastSyncAttempt = 0;
+
     for (;;) {
+        // Periodic Sync Check (Every 60s if not synced)
+        if (!isTimeSynced()) {
+            if (millis() - lastSyncAttempt > 60000) {
+                lastSyncAttempt = millis();
+                if(requestTimeSync()) {
+                    setTimeSyncStatus(true);
+                }
+            }
+        }
+
         SensorData data = getSensorData();
 
         if (data.valid) {
