@@ -9,10 +9,6 @@
 // ---------------------- MQTT Setup ----------------------
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-const char* mqttServer = "10.191.64.101"; // IP du broker central
-const int mqttPort = 1883;
-const char* mqttCafetTopic = "cesi/cafet";
-const char* mqttFablabTopic = "cesi/fablab";
 
 // ---------------------- Task ----------------------
 void wifiTask(void *pvParameters) {
@@ -47,7 +43,7 @@ void wifiTask(void *pvParameters) {
             }
 
             // --- 2. CONNEXION MQTT ---
-            mqttClient.setServer(mqttServer, mqttPort);
+            mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
             while (!mqttClient.connected()) {
                 Serial.println("[MQTT] Tentative de connexion...");
                 if (mqttClient.connect("ArduinoPasserelle")) {
@@ -67,7 +63,7 @@ void wifiTask(void *pvParameters) {
             // 1. PUBLICATION CAFETERIA (C'est nous, le Receiver/Local)
             // On envoie si le capteur local fonctionne
             if (!isnan(data.localTemperature)) {
-                Serial.println("[MQTT] >>> Envoi Topic 'cesi/cafet' (Source: LOCALE)");
+                Serial.println("[MQTT] >>> Envoi Topic '" MQTT_TOPIC_CAFET "' (Source: LOCALE)");
                 
                 String payload = "{";
                 payload += "\"source\":\"cafeteria\",";
@@ -79,13 +75,13 @@ void wifiTask(void *pvParameters) {
                 payload += "\"timeSynced\":" + String(data.timeSynced ? "true" : "false");
                 payload += "}";
                 
-                mqttClient.publish(mqttCafetTopic, payload.c_str());
+                mqttClient.publish(MQTT_TOPIC_CAFET, payload.c_str());
             }
 
             // 2. PUBLICATION FABLAB (C'est le Sender distant)
             // On envoie seulement si on a reçu des données LoRa valides pour le Fablab
             if (!isnan(data.fablab.temperature)) {
-                Serial.println("[MQTT] >>> Envoi Topic 'cesi/fablab' (Source: LoRa DISTANT)");
+                Serial.println("[MQTT] >>> Envoi Topic '" MQTT_TOPIC_FABLAB "' (Source: LoRa DISTANT)");
                 
                 String payload = "{";
                 payload += "\"source\":\"fablab\",";
@@ -94,7 +90,7 @@ void wifiTask(void *pvParameters) {
                 payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate);
                 payload += "}";
                 
-                mqttClient.publish(mqttFablabTopic, payload.c_str());
+                mqttClient.publish(MQTT_TOPIC_FABLAB, payload.c_str());
             }
         }
 
