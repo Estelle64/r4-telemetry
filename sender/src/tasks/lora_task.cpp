@@ -355,10 +355,24 @@ void loraTask(void *pvParameters) {
             digitalWrite(LED_PIN, LOW);
 
             if (success) {
-                Serial.println("[LoRaTask] Transfer Complete. Sleeping...");
+                Serial.println("[LoRaTask] Transfer Complete.");
+                
+                // Wait if User is interacting with UI
+                while (isUserActive()) {
+                    Serial.println("[LoRaTask] User Active - Holding Sleep...");
+                    vTaskDelay(1000 / portTICK_PERIOD_MS);
+                }
+                
+                Serial.println("[LoRaTask] Sleeping...");
                 SleepManager::deepSleep(DEEP_SLEEP_INTERVAL_SEC);
             } else {
                 Serial.println("[LoRaTask] Transfer Failed (No ACK). Retrying later...");
+                
+                while (isUserActive()) {
+                    Serial.println("[LoRaTask] User Active - Holding Sleep...");
+                    vTaskDelay(1000 / portTICK_PERIOD_MS);
+                }
+
                 // On failure, maybe sleep for a shorter time or retry immediately?
                 // For now, let's sleep to save battery, but maybe shorter.
                 SleepManager::deepSleep(DEEP_SLEEP_INTERVAL_SEC);

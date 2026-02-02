@@ -17,4 +17,8 @@ void updateSensorData(float temp, float hum);
 // Récupérer les données
 SensorData getSensorData();
 
+// UI State
+void setUserActive(bool isActive);
+bool isUserActive();
+
 #endif // DATA_MANAGER_H

@@ -1,8 +1,12 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
 #include "src/config.h"
+#include <Arduino.h>
+#include <Arduino_FreeRTOS.h>
+#include "src/config.h"
 #include "src/tasks/lora_task.h"
 #include "src/tasks/sensor_task.h"
+#include "src/tasks/ui_task.h"
 #include "src/utils/data_manager.h"
 #include "src/utils/sleep_manager.h"
 
@@ -29,6 +33,11 @@ void setup() {
   res = xTaskCreate(loraTask, "LoRaTask", 512, NULL, 2, NULL);
   if (res == pdPASS) Serial.println("Tâche LoRa créée.");
   else Serial.println("ERREUR: Echec création tâche LoRa !");
+
+  // UI Task: Gestion Boutons & Matrice LED
+  res = xTaskCreate(uiTask, "UITask", 256, NULL, 1, NULL);
+  if (res == pdPASS) Serial.println("Tâche UI créée.");
+  else Serial.println("ERREUR: Echec création tâche UI !");
 
   Serial.println("Démarrage du Scheduler...");
   vTaskStartScheduler();
