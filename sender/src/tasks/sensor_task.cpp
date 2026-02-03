@@ -12,7 +12,10 @@ void sensorTask(void *pvParameters) {
     dht.begin();
     
     // Attente initiale du capteur
-    delay(2000);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+    int errorCount = 0;
+    const int MAX_ERRORS = 3;
 
     for (;;) {
         // --- SECTION CRITIQUE ---
@@ -23,8 +26,20 @@ void sensorTask(void *pvParameters) {
         // ------------------------
 
         if (isnan(h) || isnan(t)) {
-            Serial.println("[SensorTask] Erreur de lecture DHT !");
+            errorCount++;
+            Serial.print("[SensorTask] Echec lecture DHT (");
+            Serial.print(errorCount);
+            Serial.println(")");
+
+            if (errorCount >= MAX_ERRORS) {
+                setDhtStatus(false);
+            }
         } else {
+            if (errorCount > 0) {
+                 Serial.println("[SensorTask] Capteur DHT rétabli !");
+            }
+            errorCount = 0;
+            
             Serial.print("[SensorTask] Lecture -> Temp: ");
             Serial.print(t);
             Serial.print("°C, Hum: ");
@@ -32,10 +47,10 @@ void sensorTask(void *pvParameters) {
             Serial.println("%");
 
             updateSensorData(t, h);
+            setDhtStatus(true);
         }
 
         // Lecture toutes les 2 secondes quand le système est réveillé
-        // Si le système dort, cette tâche est suspendue par le hardware
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
 }

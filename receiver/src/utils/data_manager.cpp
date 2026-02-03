@@ -13,6 +13,8 @@ void initDataManager() {
     memset(&currentState, 0, sizeof(SystemData));
     currentState.loraModuleConnected = false;
     currentState.dhtModuleConnected = false;
+    currentState.wifiConnected = false;
+    currentState.mqttConnected = false;
     currentState.timeSynced = false;
 }
 
@@ -54,6 +56,20 @@ void setLoraStatus(bool isConnected) {
 void setDhtStatus(bool isConnected) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
         currentState.dhtModuleConnected = isConnected;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+void setWifiStatus(bool isConnected) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        currentState.wifiConnected = isConnected;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+void setMqttStatus(bool isConnected) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        currentState.mqttConnected = isConnected;
         xSemaphoreGive(dataMutex);
     }
 }

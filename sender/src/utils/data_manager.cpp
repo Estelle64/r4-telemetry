@@ -3,6 +3,8 @@
 
 static SensorData currentData;
 static bool userActive = false;
+static bool dhtConnected = false;
+static bool timeSynced = false; // New flag
 static SemaphoreHandle_t dataMutex;
 
 void initDataManager() {
@@ -14,6 +16,31 @@ void initDataManager() {
     currentData.temperature = 0.0;
     currentData.humidity = 0.0;
     userActive = false;
+    dhtConnected = false;
+    timeSynced = false;
+}
+// ...
+void setDhtStatus(bool isConnected) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        dhtConnected = isConnected;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+void setTimeSyncStatus(bool isSynced) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        timeSynced = isSynced;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+bool isTimeSynced() {
+    bool synced = false;
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        synced = timeSynced;
+        xSemaphoreGive(dataMutex);
+    }
+    return synced;
 }
 
 void updateSensorData(float temp, float hum) {

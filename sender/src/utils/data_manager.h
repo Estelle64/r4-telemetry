@@ -21,4 +21,9 @@ SensorData getSensorData();
 void setUserActive(bool isActive);
 bool isUserActive();
 
+// Status
+void setDhtStatus(bool isConnected);
+void setTimeSyncStatus(bool isSynced);
+bool isTimeSynced();
+
 #endif // DATA_MANAGER_H

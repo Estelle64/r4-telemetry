@@ -11,11 +11,14 @@ void sensorTask(void *pvParameters) {
     Serial.println("[SensorTask] Initialisation DHT...");
     dht.begin();
     
-    delay(2000);
+    // Attente stabilisation capteur
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+    int errorCount = 0;
+    const int MAX_ERRORS = 3;
 
     for (;;) {
         // --- SECTION CRITIQUE ---
-        // On empêche FreeRTOS de changer de tâche pendant la lecture sensible (quelques ms)
         taskENTER_CRITICAL();
         float h = dht.readHumidity();
         float t = dht.readTemperature();
@@ -23,10 +26,22 @@ void sensorTask(void *pvParameters) {
         // ------------------------
 
         if (isnan(h) || isnan(t)) {
-            Serial.println("[SensorTask] Erreur de lecture DHT !");
-            setDhtStatus(false);
+            errorCount++;
+            Serial.print("[SensorTask] Echec lecture DHT (");
+            Serial.print(errorCount);
+            Serial.println(")");
+
+            if (errorCount >= MAX_ERRORS) {
+                setDhtStatus(false);
+                // En cas d'erreur persistante, on peut éventuellement tenter un reset soft du DHT ?
+                // Pour l'instant on signale juste l'erreur.
+            }
         } else {
-            // Si la lecture est OK, on considère le module connecté
+            // Lecture réussie -> Reset compteur
+            if (errorCount > 0) {
+                 Serial.println("[SensorTask] Capteur DHT rétabli !");
+            }
+            errorCount = 0;
             setDhtStatus(true);
             
             Serial.print("[SensorTask] Local -> Temp: ");
@@ -38,6 +53,7 @@ void sensorTask(void *pvParameters) {
             updateLocalData(t, h);
         }
 
-        delay(5000);
+        // Lecture périodique (toutes les 5 secondes)
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 }
