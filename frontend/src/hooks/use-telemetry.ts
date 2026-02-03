@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import type { Room } from '@/components/room-card'
 
-// URL du WebSocket (à configurer plus tard avec l'adresse réelle de l'adapter)
-// ex: const WS_URL = "ws://localhost:3000"
-// const WS_URL = "ws://10.191.64.101:3000" 
-const WS_URL = "ws://localhost:3000" 
+// URL du WebSocket configurée via les variables d'environnement (Vite)
+// Voir fichier .env à la racine du dossier frontend
+const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3000"; 
 
 export function useTelemetry() {
   const [rooms, setRooms] = useState<Room[]>([

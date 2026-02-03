@@ -1,3 +1,4 @@
+require("dotenv").config();
 const Broker = require("./broker");
 const { MongoClient } = require("mongodb");
 const express = require("express");
@@ -9,9 +10,9 @@ const stringify = require("json-stable-stringify");
 
 // --- Configuration ---
 // Conflict resolution: Keeping the IP that works for the current setup, or ENV var.
-const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://10.191.64.101:1883";
+const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://10.191.64.108:1883";
 const TOPICS = ["cesi/cafet", "cesi/fablab"];
-const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017";
+const MONGO_URL = process.env.MONGO_URL || "mongodb://10.191.64.108:27017";
 const DB_NAME = "telemetryDb";
 const COLLECTION_NAME = "blockchain_readings";
 const PORT = process.env.PORT || 3000;
@@ -84,6 +85,14 @@ async function main() {
 
     console.log("Connexion au broker MQTT...");
     const broker = new Broker(BROKER_URL);
+
+    broker.client.on("error", (err) => {
+      console.error("Erreur connexion MQTT:", err);
+    });
+
+    broker.client.on("connect", () => {
+      console.log("Connecté au broker MQTT avec succès !");
+    });
 
     TOPICS.forEach((subscribedTopic) => {
       broker.subscribe(subscribedTopic, async (topic, message) => {
