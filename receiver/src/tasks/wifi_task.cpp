@@ -14,6 +14,7 @@ PubSubClient mqttClient(espClient);
 void wifiTask(void *pvParameters) {
     // Configuration du serveur MQTT
     mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+    mqttClient.setBufferSize(512); // Augmentation du buffer pour supporter les JSON longs
 
     for (;;) {
         // --- 1. GESTION WIFI ---
