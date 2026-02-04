@@ -2,6 +2,7 @@ require("dotenv").config();
 const Broker = require("./broker");
 const { MongoClient } = require("mongodb");
 const express = require("express");
+const cors = require("cors");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
@@ -61,7 +62,29 @@ async function main() {
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
 
+  app.use(cors());
   app.use(express.static(path.join(__dirname, "public")));
+
+  app.get("/api/history/:location", async (req, res) => {
+    const { location } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+
+    try {
+      const db = mongoClient.db(DB_NAME);
+      const collection = db.collection(COLLECTION_NAME);
+      
+      const history = await collection
+        .find({ location })
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .toArray();
+
+      res.json(history.reverse());
+    } catch (error) {
+      console.error("Error fetching history:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
 
   wss.on("connection", (ws) => {
     console.log("Client WebSocket connecté");

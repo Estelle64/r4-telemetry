@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import type { Room } from '@/components/room-card'
+import type { Room, HistoryPoint } from '@/components/room-card'
 
 // URL du WebSocket configurée via les variables d'environnement (Vite)
-// Voir fichier .env à la racine du dossier frontend
 const fallbackProtocol = window.location.protocol === "https:" ? "wss" : "ws";
 const fallbackHost = window.location.hostname || "localhost";
 const fallbackPort = "3000";
@@ -10,28 +9,51 @@ const WS_URL =
   import.meta.env.VITE_WS_URL ||
   `${fallbackProtocol}://${fallbackHost}:${fallbackPort}`;
 
+const API_BASE_URL = WS_URL.replace(/^ws/, 'http');
+
 export function useTelemetry() {
   const [rooms, setRooms] = useState<Room[]>([
     {
       id: 1,
+      location: "cafet",
       name: "Cafétéria",
       description: "Espace de pause et déjeuner",
       temperature: 22.5,
       humidity: 45,
       status: "connected",
+      history: []
     },
     {
       id: 2,
+      location: "fablab",
       name: "Fablab",
       description: "Atelier de prototypage",
       temperature: 24.0,
       humidity: 50,
       status: "error",
       errorMessage: "Attente connexion...",
+      history: []
     },
   ])
 
   useEffect(() => {
+    // Fetch initial history for each room
+    rooms.forEach(room => {
+      fetch(`${API_BASE_URL}/api/history/${room.location}?limit=24`)
+        .then(res => res.json())
+        .then(data => {
+            const history: HistoryPoint[] = data.map((block: any) => ({
+                time: block.timestamp,
+                temperature: block.data.remoteTemp,
+                humidity: block.data.remoteHum
+            }));
+            setRooms(prevRooms => prevRooms.map(r => 
+                r.id === room.id ? { ...r, history } : r
+            ));
+        })
+        .catch(err => console.error(`Error fetching history for ${room.location}:`, err));
+    });
+
     const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
@@ -46,22 +68,28 @@ export function useTelemetry() {
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        // Payload format: { location: "cafet" | "fablab", data: { remoteTemp, remoteHum, ... }, ... }
         console.log("Received:", payload);
 
         if (payload.location) {
           setRooms(prevRooms => prevRooms.map(room => {
-            const isTarget = 
-              (payload.location === "cafet" && room.id === 1) ||
-              (payload.location === "fablab" && room.id === 2);
+            const isTarget = room.location === payload.location;
             
             if (isTarget && payload.data) {
-              return {
-                ...room,
+              const newPoint: HistoryPoint = {
+                time: payload.timestamp || new Date().toISOString(),
                 temperature: payload.data.remoteTemp ?? room.temperature,
                 humidity: payload.data.remoteHum ?? room.humidity,
+              };
+
+              const updatedHistory = [...(room.history || []), newPoint].slice(-50);
+
+              return {
+                ...room,
+                temperature: newPoint.temperature,
+                humidity: newPoint.humidity,
                 status: "connected",
-                errorMessage: undefined
+                errorMessage: undefined,
+                history: updatedHistory
               };
             }
             return room;
