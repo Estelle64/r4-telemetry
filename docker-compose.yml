@@ -19,6 +19,7 @@ services:
       - ./mosquitto/config:/mosquitto/config
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+    command: /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf
 
   adapter:
     build: ./adapter
