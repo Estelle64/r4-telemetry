@@ -27,14 +27,22 @@ import { Badge } from "@/components/ui/badge"
 // Types
 export type RoomStatus = "connected" | "disconnected" | "error"
 
+export interface HistoryPoint {
+  time: string
+  temperature: number
+  humidity: number
+}
+
 export interface Room {
   id: number
   name: string
+  location: "cafet" | "fablab"
   description: string
   temperature: number
   humidity: number
   status: RoomStatus
   errorMessage?: string
+  history?: HistoryPoint[]
 }
 
 // Configuration des graphiques (Couleurs et Libellés)
@@ -48,30 +56,6 @@ const chartConfig = {
     color: "#3b82f6", // Blue-500
   },
 } satisfies ChartConfig
-
-// Fonction utilitaire pour générer des données factices
-const generateHistoryData = (range: string, baseTemp: number, baseHum: number) => {
-  const points = range === "1h" ? 12 : range === "24h" ? 24 : 7
-  const data = []
-  
-  for (let i = 0; i < points; i++) {
-    const timeLabel = 
-      range === "1h" ? `${i * 5}m` : 
-      range === "24h" ? `${i}h` : 
-      `J-${7-i}`
-      
-    // Variation aléatoire légère
-    const tempVar = Math.random() * 2 - 1
-    const humVar = Math.random() * 5 - 2.5
-
-    data.push({
-      time: timeLabel,
-      temperature: parseFloat((baseTemp + tempVar).toFixed(1)),
-      humidity: Math.round(baseHum + humVar),
-    })
-  }
-  return data
-}
 
 // Helper pour le badge de status
 const getStatusBadge = (status: RoomStatus, errorMessage?: string) => {
@@ -100,10 +84,17 @@ const getStatusBadge = (status: RoomStatus, errorMessage?: string) => {
 export function RoomCard({ room }: { room: Room }) {
   const [timeRange, setTimeRange] = useState("24h")
 
-  // Recalculer les données seulement si la plage ou la pièce change
+  // On utilise l'historique fourni par le room object
   const chartData = useMemo(() => {
-    return generateHistoryData(timeRange, room.temperature, room.humidity)
-  }, [timeRange, room])
+    if (!room.history || room.history.length === 0) {
+        return [];
+    }
+    
+    return room.history.map(p => ({
+        ...p,
+        time: new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }));
+  }, [room.history])
 
   return (
     <Card className="hover:shadow-lg transition-shadow overflow-hidden">
