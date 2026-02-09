@@ -30,15 +30,31 @@ static void updateRemoteSensor(RemoteSensorData &sensor, float temp, float hum, 
     sensor.temperature = temp;
     sensor.humidity = hum;
     sensor.lastUpdate = millis();
-    sensor.rssi = rssi;
-    sensor.snr = snr;
     
-    // Packet loss detection
+    // N'utiliser le RSSI/SNR que s'ils sont fournis (non nuls)
+    if (rssi != 0) sensor.rssi = rssi;
+    if (snr != 0) sensor.snr = snr;
+    
+    // Detection de perte de paquets
     if (sensor.packetsReceived > 0) {
+        if (sequence == sensor.lastSequence) {
+            // Doublon : on incrémente les reçus mais on ne touche pas aux pertes
+            sensor.packetsReceived++;
+            return; 
+        }
+
         int expected = (sensor.lastSequence + 1) & 0xFF;
         if (sequence != expected) {
-            int gap = (sequence >= expected) ? (sequence - expected) : (256 - expected + sequence);
-            sensor.packetsLost += gap;
+            // Calcul de l'écart
+            int gap = (sequence > expected) ? (sequence - expected) : (256 - expected + sequence);
+            
+            // Si le gap est énorme (ex > 100), c'est probablement un RESET du sender
+            // On ne le compte pas comme une perte massive
+            if (gap < 100) {
+                sensor.packetsLost += gap;
+            } else {
+                Serial.println("[DataManager] Reset du Sender detecte (Saut de sequence ignore)");
+            }
         }
     }
     sensor.lastSequence = sequence;

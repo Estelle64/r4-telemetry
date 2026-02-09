@@ -98,7 +98,22 @@ static void sendAck(const uint8_t *hashToSend) {
     sendAT("AT+TEST=RXLRPKT");
 }
 
+// --- GLOBALS ---
+static int lastRssi = 0;
+static int lastSnr = 0;
+
 static void processRxLine(String line) {
+    // 1. Detection RSSI/SNR (Parfois sur une ligne separate ou incluse)
+    if (line.indexOf("RSSI:") != -1) {
+        int rIdx = line.indexOf("RSSI:");
+        int sIdx = line.indexOf("SNR:");
+        if (rIdx != -1) lastRssi = line.substring(rIdx + 5).toInt();
+        if (sIdx != -1) lastSnr = line.substring(sIdx + 4).toInt();
+        
+        // Si la ligne ne contient que ca, on s'arrete
+        if (line.indexOf("RX \"") == -1) return;
+    }
+
     int rxIndex = line.indexOf("+TEST: RX \"");
     if (rxIndex == -1) return;
 
@@ -108,12 +123,9 @@ static void processRxLine(String line) {
     if (firstQuote != -1 && lastQuote != -1 && lastQuote > firstQuote) {
         String hexContent = line.substring(firstQuote + 1, lastQuote);
         
-        // Extract RSSI and SNR from the rest of the line
-        int rssi = 0, snr = 0;
-        int rssiIdx = line.indexOf("RSSI:", lastQuote);
-        int snrIdx = line.indexOf("SNR:", lastQuote);
-        if (rssiIdx != -1) rssi = line.substring(rssiIdx + 5).toInt();
-        if (snrIdx != -1) snr = line.substring(snrIdx + 4).toInt();
+        // Si le RSSI n'a pas été trouvé plus haut (fallback parsing fin de ligne)
+        int rssi = lastRssi;
+        int snr = lastSnr;
 
         // Expect: 7 bytes Data + 32 bytes HMAC = 39 bytes => 78 hex chars
         if (hexContent.length() == 78) { 
