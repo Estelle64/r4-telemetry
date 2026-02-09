@@ -35,14 +35,43 @@ setup-arduino:
     arduino-cli lib install "ArduinoJson"
 
 # Build and start the containers
-# ensuring dependencies are installed in images
 up:
     docker-compose up -d --build
 
-# Stop the containers
+# Stop and remove containers
 down:
     docker-compose down
 
-# View logs
+# Stop containers without removing them
+stop:
+    docker-compose stop
+
+# Start containers (without build)
+start:
+    docker-compose start
+
+# Restart all containers
+restart:
+    docker-compose restart
+
+# Rebuild and restart a specific service (ex: just rebuild adapter)
+rebuild service:
+    docker-compose up -d --build {{service}}
+
+# View all logs
 logs:
     docker-compose logs -f
+
+# View logs for a specific service
+logs-of service:
+    docker-compose logs -f {{service}}
+
+# Show containers status
+status:
+    docker-compose ps
+
+# Refresh everything: clean stop, install deps, and rebuild
+refresh:
+    just down
+    just install
+    just up

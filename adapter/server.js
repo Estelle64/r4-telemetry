@@ -40,6 +40,8 @@ const latestLocationData = {
     lastUpdate: 0,
     localTemp: 0.0,
     localHum: 0.0,
+    seq: 0,
+    hmac: ""
   },
   fablab: {
     remoteTemp: 0.0,
@@ -50,6 +52,8 @@ const latestLocationData = {
     lastUpdate: 0,
     localTemp: 0.0,
     localHum: 0.0,
+    seq: 0,
+    hmac: ""
   },
 };
 
@@ -179,24 +183,16 @@ async function main() {
             return;
           }
 
-                    // Reconstruction de l'objet pour vérification HMAC
-                    const dataToVerify = { ...parsedMqttData };
-                    delete dataToVerify.hmac;
-          
-                    // Forcer le formatage identique à l'Arduino (1 décimale)
-                    if (typeof dataToVerify.temperature === 'number') {
-                      dataToVerify.temperature = parseFloat(dataToVerify.temperature.toFixed(1));
-                    }
-                    if (typeof dataToVerify.humidity === 'number') {
-                      dataToVerify.humidity = parseFloat(dataToVerify.humidity.toFixed(1));
-                    }
-          
-                    const dataString = stringify(dataToVerify);
-                    console.log(`[Security] Data string to verify: "${dataString}"`);          
-                    const calculatedHmac = crypto
-                      .createHmac("sha256", SHARED_SECRET)
-                      .update(dataString)
-                      .digest("hex");
+          // Reconstruction de l'objet pour vérification HMAC
+          const dataToVerify = { ...parsedMqttData };
+          delete dataToVerify.hmac;
+
+          const dataString = stringify(dataToVerify);
+          console.log(`[Security] Data string to verify: "${dataString}"`);          
+          const calculatedHmac = crypto
+            .createHmac("sha256", SHARED_SECRET)
+            .update(dataString)
+            .digest("hex");
 
           if (calculatedHmac !== receivedHmac) {
             console.error(`[Security] Message rejeté de ${clientId}: Signature HMAC invalide.`);
@@ -254,6 +250,12 @@ async function main() {
               latestLocationData[location].timeSynced =
                 parsedMqttData.timeSynced === "true" ||
                 parsedMqttData.timeSynced === true;
+            
+            // Ajout de la séquence et du HMAC pour la traçabilité en DB
+            if (parsedMqttData.seq !== undefined)
+              latestLocationData[location].seq = parsedMqttData.seq;
+            if (parsedMqttData.hmac !== undefined)
+              latestLocationData[location].hmac = parsedMqttData.hmac;
           }
 
           // --- BLOCKCHAIN INSERTION LOGIC ---

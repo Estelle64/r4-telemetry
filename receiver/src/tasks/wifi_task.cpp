@@ -110,12 +110,12 @@ void wifiTask(void *pvParameters) {
                         uint32_t seq = getNextMqttSequence();
                         
                         StaticJsonDocument<512> doc;
-                        // On force 1 seule décimale pour éviter les écarts de stringify
-                        doc["humidity"] = serialized(String(data.localHumidity, 1));
+                        // On envoie en String pour figer le formatage texte (ex: "23.0")
+                        doc["humidity"] = String(data.localHumidity, 1);
                         doc["loraStatus"] = data.loraModuleConnected;
                         doc["seq"] = seq;
                         doc["source"] = "cafeteria";
-                        doc["temperature"] = serialized(String(data.localTemperature, 1));
+                        doc["temperature"] = String(data.localTemperature, 1);
                         
                         // Création de la signature HMAC sur le JSON compact (clés triées)
                         String payload;
