@@ -16,7 +16,7 @@ MqttClient mqttClient(espClient);
 void onMqttMessage(int messageSize) {
     String topic = mqttClient.messageTopic();
     
-    if (topic == MQTT_TOPIC_HANDSHAKE_RES) {
+    if (topic.startsWith("cesi/handshake/res/")) {
         String payload = "";
         while (mqttClient.available()) {
             payload += (char)mqttClient.read();
@@ -25,11 +25,14 @@ void onMqttMessage(int messageSize) {
         StaticJsonDocument<128> doc;
         DeserializationError error = deserializeJson(doc, payload);
         
-        if (!error && doc.containsKey("seq")) {
+        if (!error && doc.containsKey("seq") && doc.containsKey("id")) {
+            const char* id = doc["id"];
             uint32_t seq = doc["seq"];
-            Serial.print("[MQTT] Handshake réussi ! Séquence initiale : ");
+            Serial.print("[MQTT] Handshake réussi pour ");
+            Serial.print(id);
+            Serial.print(" ! Séquence : ");
             Serial.println(seq);
-            setMqttSequence(seq);
+            setMqttSequence(id, seq);
         }
     }
 }
@@ -46,7 +49,8 @@ void wifiTask(void *pvParameters) {
         if (WiFi.status() != WL_CONNECTED) {
             setWifiStatus(false);
             setMqttStatus(false);
-            setMqttHandshakeDone(false); // Reset handshake si on perd la connexion
+            setMqttHandshakeDone("cafeteria", false); 
+            setMqttHandshakeDone("fablab", false); // Reset handshake si on perd la connexion
             
             Serial.println("[WiFi] Connexion perdue ou non établie. Tentative...");
             WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -75,21 +79,27 @@ void wifiTask(void *pvParameters) {
         if (WiFi.status() == WL_CONNECTED) {
             if (!mqttClient.connected()) {
                 setMqttStatus(false);
-                setMqttHandshakeDone(false);
+                setMqttHandshakeDone("cafeteria", false);
+                setMqttHandshakeDone("fablab", false);
                 Serial.println("[MQTT] Connexion au broker...");
                 
                 if (mqttClient.connect(MQTT_SERVER, MQTT_PORT)) {
                     Serial.println("[MQTT] Connecté !");
                     setMqttStatus(true);
                     
-                    // Souscription au topic de handshake
-                    mqttClient.subscribe(MQTT_TOPIC_HANDSHAKE_RES);
+                    // Souscription aux topics de handshake (Wildcard pour les deux)
+                    mqttClient.subscribe("cesi/handshake/res/#");
                     
-                    // Demande de handshake
+                    // Demandes initiales
                     mqttClient.beginMessage(MQTT_TOPIC_HANDSHAKE_REQ);
                     mqttClient.print("{\"id\":\"cafeteria\"}");
                     mqttClient.endMessage();
-                    Serial.println("[MQTT] Handshake demandé...");
+                    
+                    mqttClient.beginMessage(MQTT_TOPIC_HANDSHAKE_REQ);
+                    mqttClient.print("{\"id\":\"fablab\"}");
+                    mqttClient.endMessage();
+                    
+                    Serial.println("[MQTT] Handshakes demandés (Cafet & Fablab)...");
                 } else {
                     Serial.print("[MQTT] Échec, code=");
                     Serial.println(mqttClient.connectError());
@@ -101,44 +111,70 @@ void wifiTask(void *pvParameters) {
                 setMqttStatus(true);
                 mqttClient.poll();
 
-                // On ne publie les données que si le handshake est fait
-                if (isMqttHandshakeDone()) {
-                    SystemData data = getSystemData();
-
-                    // Publication Locale (Cafeteria)
-                    if (!isnan(data.localTemperature)) {
-                        uint32_t seq = getNextMqttSequence();
-                        
-                        StaticJsonDocument<512> doc;
-                        // On envoie en String pour figer le formatage texte (ex: "23.0")
-                        doc["humidity"] = String(data.localHumidity, 1);
-                        doc["loraStatus"] = data.loraModuleConnected;
-                        doc["seq"] = seq;
-                        doc["source"] = "cafeteria";
-                        doc["temperature"] = String(data.localTemperature, 1);
-                        
-                        // Création de la signature HMAC sur le JSON compact (clés triées)
-                        String payload;
-                        serializeJson(doc, payload);
-                        
-                        Serial.print("[Security] String to sign: ");
-                        Serial.println(payload);
-
-                        uint8_t hmac_res[32];
-                        hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
-                                    (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
-                        
-                        doc["hmac"] = hashToString(hmac_res);
-                        
-                        payload = "";
-                        serializeJson(doc, payload);
-                        
-                        mqttClient.beginMessage(MQTT_TOPIC_CAFET, false, 1);
-                        mqttClient.print(payload);
-                        if (!mqttClient.endMessage()) {
-                             Serial.println("[MQTT] Erreur publication Cafet (QoS 1)");
-                        }
+                // Retry Handshake si pas fait
+                static unsigned long lastHandshakeRetry = 0;
+                if (millis() - lastHandshakeRetry > 10000) {
+                    lastHandshakeRetry = millis();
+                    if (!isMqttHandshakeDone("cafeteria")) {
+                        mqttClient.beginMessage(MQTT_TOPIC_HANDSHAKE_REQ);
+                        mqttClient.print("{\"id\":\"cafeteria\"}");
+                        mqttClient.endMessage();
                     }
+                    if (!isMqttHandshakeDone("fablab")) {
+                        mqttClient.beginMessage(MQTT_TOPIC_HANDSHAKE_REQ);
+                        mqttClient.print("{\"id\":\"fablab\"}");
+                        mqttClient.endMessage();
+                    }
+                }
+
+                SystemData data = getSystemData();
+
+                // 1. Publication Locale (Cafeteria)
+                if (isMqttHandshakeDone("cafeteria") && !isnan(data.localTemperature)) {
+                    uint32_t seq = getNextMqttSequence("cafeteria");
+                    StaticJsonDocument<512> doc;
+                    doc["humidity"] = String(data.localHumidity, 1);
+                    doc["loraStatus"] = data.loraModuleConnected;
+                    doc["seq"] = seq;
+                    doc["source"] = "cafeteria";
+                    doc["temperature"] = String(data.localTemperature, 1);
+                    
+                    String payload;
+                    serializeJson(doc, payload);
+                    uint8_t hmac_res[32];
+                    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
+                                (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
+                    doc["hmac"] = hashToString(hmac_res);
+                    payload = "";
+                    serializeJson(doc, payload);
+                    
+                    mqttClient.beginMessage(MQTT_TOPIC_CAFET, false, 1);
+                    mqttClient.print(payload);
+                    mqttClient.endMessage();
+                }
+
+                // 2. Publication Distante (Fablab)
+                if (isMqttHandshakeDone("fablab") && !isnan(data.fablab.temperature)) {
+                    uint32_t seq = getNextMqttSequence("fablab");
+                    StaticJsonDocument<512> doc;
+                    doc["humidity"] = String(data.fablab.humidity, 1);
+                    doc["loraStatus"] = data.loraModuleConnected;
+                    doc["seq"] = seq;
+                    doc["source"] = "fablab";
+                    doc["temperature"] = String(data.fablab.temperature, 1);
+                    
+                    String payload;
+                    serializeJson(doc, payload);
+                    uint8_t hmac_res[32];
+                    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
+                                (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
+                    doc["hmac"] = hashToString(hmac_res);
+                    payload = "";
+                    serializeJson(doc, payload);
+                    
+                    mqttClient.beginMessage(MQTT_TOPIC_FABLAB, false, 1);
+                    mqttClient.print(payload);
+                    mqttClient.endMessage();
                 }
             }
         }

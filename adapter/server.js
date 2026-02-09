@@ -26,7 +26,8 @@ const GENESIS_HASH =
 
 // Global state for sequence numbers
 const clientSequences = {
-  cafeteria: 0
+  cafeteria: 0,
+  fablab: 0
 };
 
 // Global state to store the latest sensor data for each location
@@ -181,8 +182,8 @@ async function main() {
         }
 
         // --- VERIFICATION HMAC & SEQUENCE ---
-        if (topic.includes("cafet")) {
-          const clientId = "cafeteria";
+        if (topic.includes("cafet") || topic.includes("fablab")) {
+          const clientId = topic.includes("cafet") ? "cafeteria" : "fablab";
           const receivedHmac = parsedMqttData.hmac;
           const receivedSeq = parsedMqttData.seq;
 

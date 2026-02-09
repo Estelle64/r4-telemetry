@@ -81,35 +81,43 @@ void setTimeSyncStatus(bool isSynced) {
     }
 }
 
-void setMqttSequence(uint32_t seq) {
+void setMqttSequence(const char* id, uint32_t seq) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-        currentState.mqttSequence = seq;
-        currentState.mqttHandshakeDone = true;
+        if (strcmp(id, "cafeteria") == 0) {
+            currentState.mqttSequenceCafet = seq;
+            currentState.mqttHandshakeDoneCafet = true;
+        } else if (strcmp(id, "fablab") == 0) {
+            currentState.mqttSequenceFablab = seq;
+            currentState.mqttHandshakeDoneFablab = true;
+        }
         xSemaphoreGive(dataMutex);
     }
 }
 
-uint32_t getNextMqttSequence() {
+uint32_t getNextMqttSequence(const char* id) {
     uint32_t seq = 0;
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-        seq = currentState.mqttSequence++;
+        if (strcmp(id, "cafeteria") == 0) seq = currentState.mqttSequenceCafet++;
+        else if (strcmp(id, "fablab") == 0) seq = currentState.mqttSequenceFablab++;
         xSemaphoreGive(dataMutex);
     }
     return seq;
 }
 
-bool isMqttHandshakeDone() {
+bool isMqttHandshakeDone(const char* id) {
     bool done = false;
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-        done = currentState.mqttHandshakeDone;
+        if (strcmp(id, "cafeteria") == 0) done = currentState.mqttHandshakeDoneCafet;
+        else if (strcmp(id, "fablab") == 0) done = currentState.mqttHandshakeDoneFablab;
         xSemaphoreGive(dataMutex);
     }
     return done;
 }
 
-void setMqttHandshakeDone(bool done) {
+void setMqttHandshakeDone(const char* id, bool done) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-        currentState.mqttHandshakeDone = done;
+        if (strcmp(id, "cafeteria") == 0) currentState.mqttHandshakeDoneCafet = done;
+        else if (strcmp(id, "fablab") == 0) currentState.mqttHandshakeDoneFablab = done;
         xSemaphoreGive(dataMutex);
     }
 }
