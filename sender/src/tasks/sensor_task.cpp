@@ -33,6 +33,8 @@ void sensorTask(void *pvParameters) {
 
             if (errorCount >= MAX_ERRORS) {
                 setDhtStatus(false);
+                // On met à jour avec NAN pour indiquer l'erreur et débloquer la tâche LoRa
+                updateSensorData(NAN, NAN); 
             }
         } else {
             if (errorCount > 0) {

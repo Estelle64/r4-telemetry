@@ -59,8 +59,15 @@ export function useTelemetry() {
                   history,
                   temperature: lastPoint.temperature,
                   humidity: lastPoint.humidity,
+                  dhtStatus: lastBlock.data.dhtStatus,
+                  status: lastBlock.data.loraStatus ? "connected" : "disconnected",
+                  errorMessage: lastBlock.data.loraStatus ? undefined : "Nœud distant hors ligne (History)",
                   seq: lastBlock.data.seq,
-                  hmac: lastBlock.data.hmac
+                  hmac: lastBlock.data.hmac,
+                  rssi: lastBlock.data.rssi,
+                  snr: lastBlock.data.snr,
+                  packetsLost: lastBlock.data.packetsLost,
+                  packetsReceived: lastBlock.data.packetsReceived
                 } : r
             ));
         })
@@ -71,11 +78,6 @@ export function useTelemetry() {
 
     ws.onopen = () => {
       console.log('Connected to Telemetry Adapter');
-      setRooms(prevRooms => prevRooms.map(room => ({ 
-        ...room, 
-        status: "connected",
-        errorMessage: undefined 
-      })));
     };
 
     ws.onmessage = (event) => {
@@ -100,11 +102,16 @@ export function useTelemetry() {
                 ...room,
                 temperature: newPoint.temperature,
                 humidity: newPoint.humidity,
-                status: "connected",
-                errorMessage: undefined,
+                dhtStatus: payload.data.dhtStatus,
+                status: payload.data.loraStatus ? "connected" : "disconnected",
+                errorMessage: payload.data.loraStatus ? undefined : "Nœud distant hors ligne (Timeout)",
                 history: updatedHistory,
                 seq: payload.data.seq,
-                hmac: payload.data.hmac
+                hmac: payload.data.hmac,
+                rssi: payload.data.rssi,
+                snr: payload.data.snr,
+                packetsLost: payload.data.packetsLost,
+                packetsReceived: payload.data.packetsReceived
               };
             }
             return room;

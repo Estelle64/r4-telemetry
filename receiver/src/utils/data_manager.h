@@ -8,6 +8,13 @@ struct RemoteSensorData {
     float temperature = NAN;
     float humidity = NAN;
     uint32_t lastUpdate = 0;
+    
+    // LoRa Diagnostics
+    int rssi = 0;
+    int snr = 0;
+    uint8_t lastSequence = 0;
+    uint32_t packetsLost = 0;
+    uint32_t packetsReceived = 0;
 };
 
 struct SystemData {
@@ -37,7 +44,7 @@ void initDataManager();
 
 // Fonctions de mise à jour des données
 void updateLocalData(float temp, float hum);
-void updateRemoteData(uint8_t sensorId, float temp, float hum);
+void updateRemoteData(uint8_t sensorId, float temp, float hum, int rssi = 0, int snr = 0, uint8_t sequence = 0);
 
 // Fonctions de mise à jour des statuts
 void setLoraStatus(bool isConnected);

@@ -98,7 +98,22 @@ static void sendAck(const uint8_t *hashToSend) {
     sendAT("AT+TEST=RXLRPKT");
 }
 
+// --- GLOBALS ---
+static int lastRssi = 0;
+static int lastSnr = 0;
+
 static void processRxLine(String line) {
+    // 1. Detection RSSI/SNR (Parfois sur une ligne separate ou incluse)
+    if (line.indexOf("RSSI:") != -1) {
+        int rIdx = line.indexOf("RSSI:");
+        int sIdx = line.indexOf("SNR:");
+        if (rIdx != -1) lastRssi = line.substring(rIdx + 5).toInt();
+        if (sIdx != -1) lastSnr = line.substring(sIdx + 4).toInt();
+        
+        // Si la ligne ne contient que ca, on s'arrete
+        if (line.indexOf("RX \"") == -1) return;
+    }
+
     int rxIndex = line.indexOf("+TEST: RX \"");
     if (rxIndex == -1) return;
 
@@ -107,23 +122,30 @@ static void processRxLine(String line) {
 
     if (firstQuote != -1 && lastQuote != -1 && lastQuote > firstQuote) {
         String hexContent = line.substring(firstQuote + 1, lastQuote);
+        int len = hexContent.length();
+        
+        // Si le RSSI n'a pas été trouvé plus haut (fallback parsing fin de ligne)
+        int rssi = lastRssi;
+        int snr = lastSnr;
 
-        // Expect: 6 bytes Data + 32 bytes HMAC = 38 bytes => 76 hex chars
-        if (hexContent.length() == 76) { 
-            uint8_t payload[38];
-            hexStringToBytes(hexContent, payload, 38);
+        // On accepte 76 (Time Request) ou 78 (Data Report)
+        if (len == 76 || len == 78) { 
+            int payloadLen = len / 2;
+            uint8_t payload[40]; 
+            hexStringToBytes(hexContent, payload, payloadLen);
 
-            uint8_t dataPart[6];
+            int dataLen = payloadLen - 32;
+            uint8_t dataPart[8];
             uint8_t receivedHash[32];
             
-            memcpy(dataPart, payload, 6);
-            memcpy(receivedHash, payload + 6, 32);
+            memcpy(dataPart, payload, dataLen);
+            memcpy(receivedHash, payload + dataLen, 32);
 
             // Verify HMAC
             uint8_t calculatedHash[32];
             hmac_sha256(
                 (const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET),
-                dataPart, 6, 
+                dataPart, dataLen, 
                 calculatedHash
             );
 
@@ -131,22 +153,30 @@ static void processRxLine(String line) {
                 // Determine TYPE
                 uint8_t msgType = dataPart[1];
 
-                if (msgType == 2) { 
+                if (msgType == 2 && dataLen == 7) { 
                     // --- TYPE 2: DATA REPORT ---
                     uint8_t sensorId = dataPart[0];
-                    float tempVal = (int16_t)(dataPart[2] | (dataPart[3] << 8)) / 100.0;
-                    float humVal = (int16_t)(dataPart[4] | (dataPart[5] << 8)) / 100.0;
+                    uint8_t sequence = dataPart[2];
+                    
+                    int16_t tRaw = (int16_t)(dataPart[3] | (dataPart[4] << 8));
+                    int16_t hRaw = (int16_t)(dataPart[5] | (dataPart[6] << 8));
+                    
+                    // On décode 0x7FFF comme NAN (Erreur capteur)
+                    float tempVal = (tRaw == 0x7FFF) ? NAN : tRaw / 100.0;
+                    float humVal = (hRaw == 0x7FFF) ? NAN : hRaw / 100.0;
 
                     Serial.println("\n========== [LoRa] PAQUET DATA RECU ==========");
                     Serial.print("  Source ID   : "); Serial.print(sensorId);
                     if (sensorId == CAFETERIA_ID)      Serial.println(" (CAFETERIA)");
                     else if (sensorId == FABLAB_ID)    Serial.println(" (FABLAB)");
                     else                               Serial.println(" (INCONNU)");
+                    Serial.print("  Sequence    : "); Serial.println(sequence);
                     Serial.print("  Temperature : "); Serial.print(tempVal); Serial.println(" C");
                     Serial.print("  Humidite    : "); Serial.print(humVal); Serial.println(" %");
+                    Serial.print("  RSSI / SNR  : "); Serial.print(rssi); Serial.print(" / "); Serial.println(snr);
                     Serial.println("=============================================");
 
-                    updateRemoteData(sensorId, tempVal, humVal);
+                    updateRemoteData(sensorId, tempVal, humVal, rssi, snr, sequence);
                     setLoraStatus(true);
                     
                     digitalWrite(LED_PIN, HIGH);
@@ -156,7 +186,7 @@ static void processRxLine(String line) {
                     // Send Standard ACK (Hash)
                     sendAck(receivedHash);
 
-                } else if (msgType == 3) {
+                } else if (msgType == 3 && dataLen == 6) { 
                     // --- TYPE 3: TIME REQUEST ---
                     Serial.println("\n[LoRa] TIME SYNC REQUEST RECEIVED.");
                     
@@ -205,7 +235,7 @@ static void processRxLine(String line) {
                 Serial.println("[LoRa] ERROR: Invalid HMAC signature.");
             }
         } else {
-             Serial.println("[LoRa] Ignored: Invalid length (" + String(hexContent.length()) + ")");
+             Serial.println("[LoRa] Ignored: Invalid length (" + String(len) + ")");
         }
     } else {
         Serial.println("[LoRa] Parse error.");

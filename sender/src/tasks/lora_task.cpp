@@ -141,27 +141,32 @@ static bool requestTimeSync() {
     return false;
 }
 
-// Send Packet: [ID, Type, T_low, T_high, H_low, H_high] + [HMAC(32)]
+// Send Packet: [ID, Type, Seq, T_low, T_high, H_low, H_high] + [HMAC(32)]
 static bool sendSecurePacket(float temp, float hum) {
+    static uint8_t sequenceCounter = 0;
+    
     // 1. Prepare Data
-    uint8_t payload[6]; 
-    int16_t tInt = (int16_t)(temp * 100);
-    int16_t hInt = (int16_t)(hum * 100);
+    uint8_t payload[7]; 
+    
+    // Valeur magique 0x7FFF si le capteur est en erreur (NAN)
+    int16_t tInt = isnan(temp) ? 0x7FFF : (int16_t)(temp * 100);
+    int16_t hInt = isnan(hum) ? 0x7FFF : (int16_t)(hum * 100);
 
     payload[0] = SENSOR_ID;
     payload[1] = 2; // Type 2 = Mixed
-    payload[2] = (uint8_t)(tInt & 0xFF);
-    payload[3] = (uint8_t)((tInt >> 8) & 0xFF);
-    payload[4] = (uint8_t)(hInt & 0xFF);
-    payload[5] = (uint8_t)((hInt >> 8) & 0xFF);
+    payload[2] = sequenceCounter++;
+    payload[3] = (uint8_t)(tInt & 0xFF);
+    payload[4] = (uint8_t)((tInt >> 8) & 0xFF);
+    payload[5] = (uint8_t)(hInt & 0xFF);
+    payload[6] = (uint8_t)((hInt >> 8) & 0xFF);
 
     // 2. Sign Data (HMAC)
     uint8_t hmac[32];
-    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), payload, 6, hmac);
+    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), payload, 7, hmac);
 
     // 3. Build Hex String
     String hexPayload = "";
-    for(int i=0; i<6; i++) hexPayload += byteToHexString(payload[i]);
+    for(int i=0; i<7; i++) hexPayload += byteToHexString(payload[i]);
     for(int i=0; i<32; i++) hexPayload += byteToHexString(hmac[i]);
 
     String sentHashStr = hashToString(hmac);
