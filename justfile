@@ -31,7 +31,7 @@ setup-arduino:
     arduino-cli lib install "FreeRTOS"
     arduino-cli lib install "DHT sensor library"
     arduino-cli lib install "Adafruit Unified Sensor"
-    arduino-cli lib install "PubSubClient"
+    arduino-cli lib install "ArduinoMqttClient"
 
 # Build and start the containers
 # ensuring dependencies are installed in images

@@ -1,20 +1,19 @@
 #include "wifi_task.h"
 #include <WiFiS3.h>
 #include <Arduino_FreeRTOS.h>
-#include <PubSubClient.h>
+#include <ArduinoMqttClient.h>
 #include "../config.h"
 #include "../utils/data_manager.h"
 #include "../utils/time_manager.h"
 
 // ---------------------- MQTT Setup ----------------------
 WiFiClient espClient;
-PubSubClient mqttClient(espClient);
+MqttClient mqttClient(espClient);
 
 // ---------------------- Task ----------------------
 void wifiTask(void *pvParameters) {
-    // Configuration du serveur MQTT
-    mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
-    mqttClient.setBufferSize(512); // Augmentation du buffer pour supporter les JSON longs
+    // Identification du client
+    mqttClient.setId("ArduinoPasserelle");
 
     for (;;) {
         // --- 1. GESTION WIFI ---
@@ -69,12 +68,12 @@ void wifiTask(void *pvParameters) {
                 setMqttStatus(false);
                 Serial.println("[MQTT] Connexion au broker...");
                 
-                if (mqttClient.connect("ArduinoPasserelle")) {
+                if (mqttClient.connect(MQTT_SERVER, MQTT_PORT)) {
                     Serial.println("[MQTT] Connecté !");
                     setMqttStatus(true);
                 } else {
-                    Serial.print("[MQTT] Échec, rc=");
-                    Serial.println(mqttClient.state());
+                    Serial.print("[MQTT] Échec, code d'erreur=");
+                    Serial.println(mqttClient.connectError());
                     // Délai avant retry MQTT
                     vTaskDelay(5000 / portTICK_PERIOD_MS);
                 }
@@ -82,7 +81,7 @@ void wifiTask(void *pvParameters) {
             
             if (mqttClient.connected()) {
                 setMqttStatus(true);
-                mqttClient.loop();
+                mqttClient.poll();
 
                 // --- 3. PUBLICATION ---
                 SystemData data = getSystemData();
@@ -98,10 +97,13 @@ void wifiTask(void *pvParameters) {
                     payload += "\"mqttStatus\":true";
                     payload += "}";
                     
-                    if (mqttClient.publish(MQTT_TOPIC_CAFET, payload.c_str())) {
-                         // Publication réussie
+                    // Publication avec QoS 1 (At Least Once)
+                    mqttClient.beginMessage(MQTT_TOPIC_CAFET, false, 1);
+                    mqttClient.print(payload);
+                    if (mqttClient.endMessage()) {
+                         // Publication réussie et confirmée par le broker
                     } else {
-                         Serial.println("[MQTT] Erreur lors de la publication Cafet");
+                         Serial.println("[MQTT] Erreur lors de la publication Cafet (QoS 1 non confirmé)");
                     }
                 }
 
@@ -114,7 +116,12 @@ void wifiTask(void *pvParameters) {
                     payload += "\"lastUpdate\":" + String(millis() - data.fablab.lastUpdate);
                     payload += "}";
                     
-                    mqttClient.publish(MQTT_TOPIC_FABLAB, payload.c_str());
+                    // Publication avec QoS 1
+                    mqttClient.beginMessage(MQTT_TOPIC_FABLAB, false, 1);
+                    mqttClient.print(payload);
+                    if (!mqttClient.endMessage()) {
+                        Serial.println("[MQTT] Erreur lors de la publication Fablab (QoS 1 non confirmé)");
+                    }
                 }
             }
         }
