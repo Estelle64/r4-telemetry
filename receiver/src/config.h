@@ -6,10 +6,12 @@
 #define WIFI_PASS "#F2uV4R3*"
 
 // MQTT Configuration
-#define MQTT_SERVER "10.191.64.108"
+#define MQTT_SERVER "10.191.64.104"
 #define MQTT_PORT 1883
 #define MQTT_TOPIC_CAFET "cesi/cafet"
 #define MQTT_TOPIC_FABLAB "cesi/fablab"
+#define MQTT_TOPIC_HANDSHAKE_REQ "cesi/handshake/req"
+#define MQTT_TOPIC_HANDSHAKE_RES "cesi/handshake/res/cafeteria"
 
 // LoRa Configuration (Pins pour Arduino R4 WiFi)
 #define LORA_SS_PIN 10

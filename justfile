@@ -32,6 +32,7 @@ setup-arduino:
     arduino-cli lib install "DHT sensor library"
     arduino-cli lib install "Adafruit Unified Sensor"
     arduino-cli lib install "ArduinoMqttClient"
+    arduino-cli lib install "ArduinoJson"
 
 # Build and start the containers
 # ensuring dependencies are installed in images

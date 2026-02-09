@@ -81,6 +81,39 @@ void setTimeSyncStatus(bool isSynced) {
     }
 }
 
+void setMqttSequence(uint32_t seq) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        currentState.mqttSequence = seq;
+        currentState.mqttHandshakeDone = true;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+uint32_t getNextMqttSequence() {
+    uint32_t seq = 0;
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        seq = currentState.mqttSequence++;
+        xSemaphoreGive(dataMutex);
+    }
+    return seq;
+}
+
+bool isMqttHandshakeDone() {
+    bool done = false;
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        done = currentState.mqttHandshakeDone;
+        xSemaphoreGive(dataMutex);
+    }
+    return done;
+}
+
+void setMqttHandshakeDone(bool done) {
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        currentState.mqttHandshakeDone = done;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
 SystemData getSystemData() {
     SystemData data;
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
