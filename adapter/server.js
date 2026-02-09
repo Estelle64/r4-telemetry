@@ -13,6 +13,8 @@ const stringify = require("json-stable-stringify");
 // Conflict resolution: Keeping the IP that works for the current setup, or ENV var.
 const BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://10.191.64.108:1883";
 const TOPICS = ["cesi/cafet", "cesi/fablab"];
+const HANDSHAKE_REQ_TOPIC = "cesi/handshake/req";
+const SHARED_SECRET = "IoT_Secure_P@ssw0rd_2026"; // Doit correspondre à LORA_SHARED_SECRET du C++
 const MONGO_URL = process.env.MONGO_URL || "mongodb://10.191.64.108:27017";
 const DB_NAME = "telemetryDb";
 const COLLECTION_NAME = "blockchain_readings";
@@ -21,6 +23,12 @@ const PORT = process.env.PORT || 3000;
 // Genesis Hash (SHA256 of "Genesis Block")
 const GENESIS_HASH =
   "0000000000000000000000000000000000000000000000000000000000000000";
+
+// Global state for sequence numbers
+const clientSequences = {
+  cafeteria: 0,
+  fablab: 0
+};
 
 // Global state to store the latest sensor data for each location
 const latestLocationData = {
@@ -33,6 +41,8 @@ const latestLocationData = {
     lastUpdate: 0,
     localTemp: 0.0,
     localHum: 0.0,
+    seq: 0,
+    hmac: ""
   },
   fablab: {
     remoteTemp: 0.0,
@@ -43,6 +53,8 @@ const latestLocationData = {
     lastUpdate: 0,
     localTemp: 0.0,
     localHum: 0.0,
+    seq: 0,
+    hmac: ""
   },
 };
 
@@ -113,8 +125,50 @@ async function main() {
       console.error("Erreur connexion MQTT:", err);
     });
 
-    broker.client.on("connect", () => {
+    broker.client.on("connect", async () => {
       console.log("Connecté au broker MQTT avec succès !");
+
+      // Initialisation des séquences et des dernières données depuis MongoDB
+      try {
+        const db = mongoClient.db(DB_NAME);
+        
+        // 1. Charger les séquences
+        const configColl = db.collection("config");
+        const seqDoc = await configColl.findOne({ _id: "sequences" });
+        if (seqDoc) {
+          Object.assign(clientSequences, seqDoc.data);
+          console.log("[Security] Séquences chargées depuis DB:", clientSequences);
+        }
+
+        // 2. Charger les dernières données de chaque zone pour initialiser le cache
+        const locations = ["cafet", "fablab"];
+        for (const loc of locations) {
+          const lastBlock = await db.collection(COLLECTION_NAME)
+            .findOne({ location: loc }, { sort: { timestamp: -1 } });
+          
+          if (lastBlock && lastBlock.data) {
+            latestLocationData[loc] = { ...lastBlock.data };
+            console.log(`[Init] Dernières données chargées pour ${loc}:`, latestLocationData[loc]);
+          }
+        }
+      } catch (e) {
+        console.error("Erreur chargement état initial depuis DB:", e);
+      }
+
+      // Souscription au handshake
+      broker.subscribe(HANDSHAKE_REQ_TOPIC, (topic, message) => {
+        try {
+          const req = JSON.parse(message.toString());
+          if (req.id && clientSequences[req.id] !== undefined) {
+            const resTopic = `cesi/handshake/res/${req.id}`;
+            const response = JSON.stringify({ id: req.id, seq: clientSequences[req.id] });
+            broker.publish(resTopic, response);
+            console.log(`[Handshake] Envoyé à ${req.id}: ${response}`);
+          }
+        } catch (e) {
+          console.error("Erreur Handshake REQ:", e);
+        }
+      });
     });
 
     TOPICS.forEach((subscribedTopic) => {
@@ -125,6 +179,52 @@ async function main() {
         } catch (e) {
           console.error("Invalid JSON received:", message.toString());
           return;
+        }
+
+        // --- VERIFICATION HMAC & SEQUENCE ---
+        if (topic.includes("cafet") || topic.includes("fablab")) {
+          const clientId = topic.includes("cafet") ? "cafeteria" : "fablab";
+          const receivedHmac = parsedMqttData.hmac;
+          const receivedSeq = parsedMqttData.seq;
+
+          if (!receivedHmac || receivedSeq === undefined) {
+             console.error(`[Security] Message rejeté de ${clientId}: Signature ou séquence manquante.`);
+             return;
+          }
+
+          // Vérification de la séquence
+          if (receivedSeq < clientSequences[clientId]) {
+            console.error(`[Security] Message rejeté de ${clientId}: Séquence invalide (Replay?). Reçu:${receivedSeq}, Attendu:>=${clientSequences[clientId]}`);
+            return;
+          }
+
+          // Reconstruction de l'objet pour vérification HMAC
+          const dataToVerify = { ...parsedMqttData };
+          delete dataToVerify.hmac;
+
+          const dataString = stringify(dataToVerify);
+          console.log(`[Security] Data string to verify: "${dataString}"`);          
+          const calculatedHmac = crypto
+            .createHmac("sha256", SHARED_SECRET)
+            .update(dataString)
+            .digest("hex");
+
+          if (calculatedHmac !== receivedHmac) {
+            console.error(`[Security] Message rejeté de ${clientId}: Signature HMAC invalide.`);
+            console.error(`Attendu: ${calculatedHmac}, Reçu: ${receivedHmac}`);
+            return;
+          }
+
+          // Signature valide, on met à jour la séquence
+          clientSequences[clientId] = receivedSeq + 1;
+          
+          // Sauvegarde persistante de la séquence
+          const db = mongoClient.db(DB_NAME);
+          await db.collection("config").updateOne(
+            { _id: "sequences" },
+            { $set: { data: clientSequences } },
+            { upsert: true }
+          );
         }
 
         console.log(`Parsed MQTT data for topic ${topic}:`, parsedMqttData);
@@ -165,6 +265,12 @@ async function main() {
               latestLocationData[location].timeSynced =
                 parsedMqttData.timeSynced === "true" ||
                 parsedMqttData.timeSynced === true;
+            
+            // Ajout de la séquence et du HMAC pour la traçabilité en DB
+            if (parsedMqttData.seq !== undefined)
+              latestLocationData[location].seq = parsedMqttData.seq;
+            if (parsedMqttData.hmac !== undefined)
+              latestLocationData[location].hmac = parsedMqttData.hmac;
           }
 
           // --- BLOCKCHAIN INSERTION LOGIC ---

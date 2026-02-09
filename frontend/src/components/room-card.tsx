@@ -43,6 +43,8 @@ export interface Room {
   status: RoomStatus
   errorMessage?: string
   history?: HistoryPoint[]
+  seq?: number
+  hmac?: string
 }
 
 // Configuration des graphiques (Couleurs et Libellés)
@@ -215,6 +217,23 @@ export function RoomCard({ room }: { room: Room }) {
             </AreaChart>
           </ChartContainer>
         </div>
+
+        {/* Footer avec Preuve d'intégrité */}
+        {(room.seq !== undefined || room.hmac) && (
+          <div className="pt-4 border-t border-border/50">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Preuve d'intégrité (HMAC SHA256)
+              </span>
+              <div className="flex justify-between items-center bg-secondary/20 p-2 rounded text-[10px] font-mono">
+                <span className="text-orange-500">SEQ: {room.seq}</span>
+                <span className="text-muted-foreground truncate ml-4" title={room.hmac}>
+                  {room.hmac ? `${room.hmac.substring(0, 16)}...` : "N/A"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

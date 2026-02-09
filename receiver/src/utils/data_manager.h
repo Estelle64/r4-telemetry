@@ -25,6 +25,12 @@ struct SystemData {
     bool wifiConnected;
     bool mqttConnected;
     bool timeSynced;
+
+    // Sécurité MQTT
+    uint32_t mqttSequenceCafet;
+    uint32_t mqttSequenceFablab;
+    bool mqttHandshakeDoneCafet;
+    bool mqttHandshakeDoneFablab;
 };
 
 void initDataManager();
@@ -39,6 +45,12 @@ void setDhtStatus(bool isConnected);
 void setWifiStatus(bool isConnected);
 void setMqttStatus(bool isConnected);
 void setTimeSyncStatus(bool isSynced);
+
+// Sécurité MQTT
+void setMqttSequence(const char* id, uint32_t seq);
+uint32_t getNextMqttSequence(const char* id);
+bool isMqttHandshakeDone(const char* id);
+void setMqttHandshakeDone(const char* id, bool done);
 
 // Fonction pour récupérer tout l'état
 SystemData getSystemData();
