@@ -41,6 +41,7 @@ export interface Room {
   temperature: number
   humidity: number
   status: RoomStatus
+  dhtStatus?: boolean
   errorMessage?: string
   history?: HistoryPoint[]
   seq?: number
@@ -65,12 +66,17 @@ const chartConfig = {
 } satisfies ChartConfig
 
 // Helper pour le badge de status
-const getStatusBadge = (status: RoomStatus, errorMessage?: string, isLora?: boolean) => {
+const getStatusBadge = (status: RoomStatus, errorMessage?: string, isLora?: boolean, dhtOk: boolean = true) => {
   return (
     <div className="flex gap-2">
       {isLora && (
         <Badge variant="outline" className="border-blue-500 text-blue-500 font-bold bg-blue-500/10">
           LoRa
+        </Badge>
+      )}
+      {!dhtOk && (
+        <Badge variant="destructive" className="animate-pulse">
+          Erreur Capteur
         </Badge>
       )}
       {status === "connected" ? (
@@ -119,9 +125,14 @@ export function RoomCard({ room }: { room: Room }) {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
                <CardTitle>{room.name}</CardTitle>
-               {getStatusBadge(room.status, room.errorMessage, room.packetsReceived !== undefined && room.packetsReceived > 0)}
+               {getStatusBadge(room.status, room.errorMessage, room.packetsReceived !== undefined && room.packetsReceived > 0, room.dhtStatus)}
             </div>
             <CardDescription>{room.description}</CardDescription>
+            {room.dhtStatus === false && (
+                <p className="text-xs text-destructive font-medium pt-1">
+                    Attention: Capteur DHT non détecté ou illisible.
+                </p>
+            )}
             {room.status === "error" && room.errorMessage && (
                 <p className="text-xs text-orange-500 font-medium pt-1">
                     Attention: {room.errorMessage}

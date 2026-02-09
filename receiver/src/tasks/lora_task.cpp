@@ -157,8 +157,13 @@ static void processRxLine(String line) {
                     // --- TYPE 2: DATA REPORT ---
                     uint8_t sensorId = dataPart[0];
                     uint8_t sequence = dataPart[2];
-                    float tempVal = (int16_t)(dataPart[3] | (dataPart[4] << 8)) / 100.0;
-                    float humVal = (int16_t)(dataPart[5] | (dataPart[6] << 8)) / 100.0;
+                    
+                    int16_t tRaw = (int16_t)(dataPart[3] | (dataPart[4] << 8));
+                    int16_t hRaw = (int16_t)(dataPart[5] | (dataPart[6] << 8));
+                    
+                    // On décode 0x7FFF comme NAN (Erreur capteur)
+                    float tempVal = (tRaw == 0x7FFF) ? NAN : tRaw / 100.0;
+                    float humVal = (hRaw == 0x7FFF) ? NAN : hRaw / 100.0;
 
                     Serial.println("\n========== [LoRa] PAQUET DATA RECU ==========");
                     Serial.print("  Source ID   : "); Serial.print(sensorId);

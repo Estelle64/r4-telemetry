@@ -147,8 +147,10 @@ static bool sendSecurePacket(float temp, float hum) {
     
     // 1. Prepare Data
     uint8_t payload[7]; 
-    int16_t tInt = (int16_t)(temp * 100);
-    int16_t hInt = (int16_t)(hum * 100);
+    
+    // Valeur magique 0x7FFF si le capteur est en erreur (NAN)
+    int16_t tInt = isnan(temp) ? 0x7FFF : (int16_t)(temp * 100);
+    int16_t hInt = isnan(hum) ? 0x7FFF : (int16_t)(hum * 100);
 
     payload[0] = SENSOR_ID;
     payload[1] = 2; // Type 2 = Mixed
