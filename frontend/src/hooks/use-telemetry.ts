@@ -60,6 +60,8 @@ export function useTelemetry() {
                   temperature: lastPoint.temperature,
                   humidity: lastPoint.humidity,
                   dhtStatus: lastBlock.data.dhtStatus,
+                  status: lastBlock.data.loraStatus ? "connected" : "disconnected",
+                  errorMessage: lastBlock.data.loraStatus ? undefined : "Nœud distant hors ligne (History)",
                   seq: lastBlock.data.seq,
                   hmac: lastBlock.data.hmac,
                   rssi: lastBlock.data.rssi,
@@ -76,11 +78,6 @@ export function useTelemetry() {
 
     ws.onopen = () => {
       console.log('Connected to Telemetry Adapter');
-      setRooms(prevRooms => prevRooms.map(room => ({ 
-        ...room, 
-        status: "connected",
-        errorMessage: undefined 
-      })));
     };
 
     ws.onmessage = (event) => {
@@ -106,8 +103,8 @@ export function useTelemetry() {
                 temperature: newPoint.temperature,
                 humidity: newPoint.humidity,
                 dhtStatus: payload.data.dhtStatus,
-                status: "connected",
-                errorMessage: undefined,
+                status: payload.data.loraStatus ? "connected" : "disconnected",
+                errorMessage: payload.data.loraStatus ? undefined : "Nœud distant hors ligne (Timeout)",
                 history: updatedHistory,
                 seq: payload.data.seq,
                 hmac: payload.data.hmac,

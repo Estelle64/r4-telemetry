@@ -176,7 +176,7 @@ void wifiTask(void *pvParameters) {
                 }
 
                 // --- 2.2 Publication Distante (Fablab) ---
-                bool fablabIsStale = (now - data.fablab.lastUpdate > LORA_TIMEOUT) && (data.fablab.packetsReceived > 0);
+                bool fablabIsStale = (now - data.fablab.lastUpdate > LORA_TIMEOUT);
 
                 if (isMqttHandshakeDone("fablab")) {
                     // On publie si: Nouveau paquet LoRa reçu OU changement d'état stale (Offline)
