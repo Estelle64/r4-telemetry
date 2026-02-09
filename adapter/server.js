@@ -127,17 +127,31 @@ async function main() {
     broker.client.on("connect", async () => {
       console.log("Connecté au broker MQTT avec succès !");
 
-      // Initialisation des séquences depuis MongoDB au démarrage
+      // Initialisation des séquences et des dernières données depuis MongoDB
       try {
         const db = mongoClient.db(DB_NAME);
+        
+        // 1. Charger les séquences
         const configColl = db.collection("config");
         const seqDoc = await configColl.findOne({ _id: "sequences" });
         if (seqDoc) {
           Object.assign(clientSequences, seqDoc.data);
           console.log("[Security] Séquences chargées depuis DB:", clientSequences);
         }
+
+        // 2. Charger les dernières données de chaque zone pour initialiser le cache
+        const locations = ["cafet", "fablab"];
+        for (const loc of locations) {
+          const lastBlock = await db.collection(COLLECTION_NAME)
+            .findOne({ location: loc }, { sort: { timestamp: -1 } });
+          
+          if (lastBlock && lastBlock.data) {
+            latestLocationData[loc] = { ...lastBlock.data };
+            console.log(`[Init] Dernières données chargées pour ${loc}:`, latestLocationData[loc]);
+          }
+        }
       } catch (e) {
-        console.error("Erreur chargement séquences:", e);
+        console.error("Erreur chargement état initial depuis DB:", e);
       }
 
       // Souscription au handshake

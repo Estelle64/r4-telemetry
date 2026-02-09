@@ -18,9 +18,9 @@ export function useTelemetry() {
       location: "cafet",
       name: "Cafétéria",
       description: "Espace de pause et déjeuner",
-      temperature: 22.5,
-      humidity: 45,
-      status: "connected",
+      temperature: 0,
+      humidity: 0,
+      status: "disconnected",
       history: []
     },
     {
@@ -28,10 +28,9 @@ export function useTelemetry() {
       location: "fablab",
       name: "Fablab",
       description: "Atelier de prototypage",
-      temperature: 24.0,
-      humidity: 50,
-      status: "error",
-      errorMessage: "Attente connexion...",
+      temperature: 0,
+      humidity: 0,
+      status: "disconnected",
       history: []
     },
   ])
@@ -39,16 +38,30 @@ export function useTelemetry() {
   useEffect(() => {
     // Fetch initial history for each room
     rooms.forEach(room => {
-      fetch(`${API_BASE_URL}/api/history/${room.location}?limit=24`)
+      fetch(`${API_BASE_URL}/api/history/${room.location}?limit=50`)
         .then(res => res.json())
         .then(data => {
+            if (!data || data.length === 0) return;
+
             const history: HistoryPoint[] = data.map((block: any) => ({
                 time: block.timestamp,
-                temperature: block.data.remoteTemp,
-                humidity: block.data.remoteHum
+                temperature: parseFloat(block.data.remoteTemp),
+                humidity: parseFloat(block.data.remoteHum)
             }));
+
+            // On prend le dernier point de l'historique comme valeur actuelle
+            const lastPoint = history[history.length - 1];
+            const lastBlock = data[data.length - 1];
+
             setRooms(prevRooms => prevRooms.map(r => 
-                r.id === room.id ? { ...r, history } : r
+                r.id === room.id ? { 
+                  ...r, 
+                  history,
+                  temperature: lastPoint.temperature,
+                  humidity: lastPoint.humidity,
+                  seq: lastBlock.data.seq,
+                  hmac: lastBlock.data.hmac
+                } : r
             ));
         })
         .catch(err => console.error(`Error fetching history for ${room.location}:`, err));
@@ -77,8 +90,8 @@ export function useTelemetry() {
             if (isTarget && payload.data) {
               const newPoint: HistoryPoint = {
                 time: payload.timestamp || new Date().toISOString(),
-                temperature: payload.data.remoteTemp ?? room.temperature,
-                humidity: payload.data.remoteHum ?? room.humidity,
+                temperature: parseFloat(payload.data.remoteTemp),
+                humidity: parseFloat(payload.data.remoteHum),
               };
 
               const updatedHistory = [...(room.history || []), newPoint].slice(-50);
@@ -89,7 +102,9 @@ export function useTelemetry() {
                 humidity: newPoint.humidity,
                 status: "connected",
                 errorMessage: undefined,
-                history: updatedHistory
+                history: updatedHistory,
+                seq: payload.data.seq,
+                hmac: payload.data.hmac
               };
             }
             return room;
