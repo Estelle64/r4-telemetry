@@ -35,6 +35,10 @@ const latestLocationData = {
   cafet: {
     remoteTemp: 0.0,
     remoteHum: 0.0,
+    rssi: 0,
+    snr: 0,
+    packetsLost: 0,
+    packetsReceived: 0,
     loraStatus: true,
     dhtStatus: true,
     timeSynced: false,
@@ -47,6 +51,10 @@ const latestLocationData = {
   fablab: {
     remoteTemp: 0.0,
     remoteHum: 0.0,
+    rssi: 0,
+    snr: 0,
+    packetsLost: 0,
+    packetsReceived: 0,
     loraStatus: true,
     dhtStatus: true,
     timeSynced: false,
@@ -265,6 +273,16 @@ async function main() {
               latestLocationData[location].timeSynced =
                 parsedMqttData.timeSynced === "true" ||
                 parsedMqttData.timeSynced === true;
+            
+            // Diagnostics LoRa
+            if (parsedMqttData.rssi !== undefined)
+              latestLocationData[location].rssi = parsedMqttData.rssi;
+            if (parsedMqttData.snr !== undefined)
+              latestLocationData[location].snr = parsedMqttData.snr;
+            if (parsedMqttData.packetsLost !== undefined)
+              latestLocationData[location].packetsLost = parsedMqttData.packetsLost;
+            if (parsedMqttData.packetsReceived !== undefined)
+              latestLocationData[location].packetsReceived = parsedMqttData.packetsReceived;
             
             // Ajout de la séquence et du HMAC pour la traçabilité en DB
             if (parsedMqttData.seq !== undefined)

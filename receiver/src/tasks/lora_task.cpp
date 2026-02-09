@@ -107,23 +107,30 @@ static void processRxLine(String line) {
 
     if (firstQuote != -1 && lastQuote != -1 && lastQuote > firstQuote) {
         String hexContent = line.substring(firstQuote + 1, lastQuote);
+        
+        // Extract RSSI and SNR from the rest of the line
+        int rssi = 0, snr = 0;
+        int rssiIdx = line.indexOf("RSSI:", lastQuote);
+        int snrIdx = line.indexOf("SNR:", lastQuote);
+        if (rssiIdx != -1) rssi = line.substring(rssiIdx + 5).toInt();
+        if (snrIdx != -1) snr = line.substring(snrIdx + 4).toInt();
 
-        // Expect: 6 bytes Data + 32 bytes HMAC = 38 bytes => 76 hex chars
-        if (hexContent.length() == 76) { 
-            uint8_t payload[38];
-            hexStringToBytes(hexContent, payload, 38);
+        // Expect: 7 bytes Data + 32 bytes HMAC = 39 bytes => 78 hex chars
+        if (hexContent.length() == 78) { 
+            uint8_t payload[39];
+            hexStringToBytes(hexContent, payload, 39);
 
-            uint8_t dataPart[6];
+            uint8_t dataPart[7];
             uint8_t receivedHash[32];
             
-            memcpy(dataPart, payload, 6);
-            memcpy(receivedHash, payload + 6, 32);
+            memcpy(dataPart, payload, 7);
+            memcpy(receivedHash, payload + 7, 32);
 
             // Verify HMAC
             uint8_t calculatedHash[32];
             hmac_sha256(
                 (const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET),
-                dataPart, 6, 
+                dataPart, 7, 
                 calculatedHash
             );
 
@@ -134,19 +141,22 @@ static void processRxLine(String line) {
                 if (msgType == 2) { 
                     // --- TYPE 2: DATA REPORT ---
                     uint8_t sensorId = dataPart[0];
-                    float tempVal = (int16_t)(dataPart[2] | (dataPart[3] << 8)) / 100.0;
-                    float humVal = (int16_t)(dataPart[4] | (dataPart[5] << 8)) / 100.0;
+                    uint8_t sequence = dataPart[2];
+                    float tempVal = (int16_t)(dataPart[3] | (dataPart[4] << 8)) / 100.0;
+                    float humVal = (int16_t)(dataPart[5] | (dataPart[6] << 8)) / 100.0;
 
                     Serial.println("\n========== [LoRa] PAQUET DATA RECU ==========");
                     Serial.print("  Source ID   : "); Serial.print(sensorId);
                     if (sensorId == CAFETERIA_ID)      Serial.println(" (CAFETERIA)");
                     else if (sensorId == FABLAB_ID)    Serial.println(" (FABLAB)");
                     else                               Serial.println(" (INCONNU)");
+                    Serial.print("  Sequence    : "); Serial.println(sequence);
                     Serial.print("  Temperature : "); Serial.print(tempVal); Serial.println(" C");
                     Serial.print("  Humidite    : "); Serial.print(humVal); Serial.println(" %");
+                    Serial.print("  RSSI / SNR  : "); Serial.print(rssi); Serial.print(" / "); Serial.println(snr);
                     Serial.println("=============================================");
 
-                    updateRemoteData(sensorId, tempVal, humVal);
+                    updateRemoteData(sensorId, tempVal, humVal, rssi, snr, sequence);
                     setLoraStatus(true);
                     
                     digitalWrite(LED_PIN, HIGH);

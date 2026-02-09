@@ -135,7 +135,20 @@ void wifiTask(void *pvParameters) {
                     StaticJsonDocument<512> doc;
                     doc["humidity"] = String(data.localHumidity, 1);
                     doc["loraStatus"] = data.loraModuleConnected;
+                    
+                    // Diagnostics LoRa (si reçus via LoRa)
+                    if (data.cafeteria.packetsReceived > 0) {
+                        doc["packetsLost"] = data.cafeteria.packetsLost;
+                        doc["packetsReceived"] = data.cafeteria.packetsReceived;
+                        doc["rssi"] = data.cafeteria.rssi;
+                    }
+                    
                     doc["seq"] = seq;
+                    
+                    if (data.cafeteria.packetsReceived > 0) {
+                        doc["snr"] = data.cafeteria.snr;
+                    }
+
                     doc["source"] = "cafeteria";
                     doc["temperature"] = String(data.localTemperature, 1);
                     
@@ -159,7 +172,11 @@ void wifiTask(void *pvParameters) {
                     StaticJsonDocument<512> doc;
                     doc["humidity"] = String(data.fablab.humidity, 1);
                     doc["loraStatus"] = data.loraModuleConnected;
+                    doc["packetsLost"] = data.fablab.packetsLost;
+                    doc["packetsReceived"] = data.fablab.packetsReceived;
+                    doc["rssi"] = data.fablab.rssi;
                     doc["seq"] = seq;
+                    doc["snr"] = data.fablab.snr;
                     doc["source"] = "fablab";
                     doc["temperature"] = String(data.fablab.temperature, 1);
                     

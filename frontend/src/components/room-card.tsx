@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
-import { Droplets, Thermometer } from "lucide-react"
+import { Droplets, Thermometer, Signal, Activity } from "lucide-react"
 
 import {
   Card,
@@ -45,6 +45,11 @@ export interface Room {
   history?: HistoryPoint[]
   seq?: number
   hmac?: string
+  // LoRa Diagnostics
+  rssi?: number
+  snr?: number
+  packetsLost?: number
+  packetsReceived?: number
 }
 
 // Configuration des graphiques (Couleurs et Libellés)
@@ -60,31 +65,40 @@ const chartConfig = {
 } satisfies ChartConfig
 
 // Helper pour le badge de status
-const getStatusBadge = (status: RoomStatus, errorMessage?: string) => {
-  switch (status) {
-    case "connected":
-      return (
+const getStatusBadge = (status: RoomStatus, errorMessage?: string, isLora?: boolean) => {
+  return (
+    <div className="flex gap-2">
+      {isLora && (
+        <Badge variant="outline" className="border-blue-500 text-blue-500 font-bold bg-blue-500/10">
+          LoRa
+        </Badge>
+      )}
+      {status === "connected" ? (
         <Badge className="bg-green-500 hover:bg-green-600 text-white border-transparent">
           Connecté
         </Badge>
-      )
-    case "disconnected":
-      return (
+      ) : status === "disconnected" ? (
         <Badge variant="destructive">
           Déconnecté
         </Badge>
-      )
-    case "error":
-      return (
+      ) : (
         <Badge className="bg-orange-500 hover:bg-orange-600 text-white border-transparent" title={errorMessage}>
           Erreur
         </Badge>
-      )
-  }
+      )}
+    </div>
+  )
 }
 
 export function RoomCard({ room }: { room: Room }) {
   const [timeRange, setTimeRange] = useState("24h")
+
+  // Calcul du taux de perte
+  const lossRate = useMemo(() => {
+    if (!room.packetsReceived || room.packetsReceived === 0) return 0;
+    const total = room.packetsReceived + (room.packetsLost || 0);
+    return ((room.packetsLost || 0) / total * 100).toFixed(1);
+  }, [room.packetsReceived, room.packetsLost]);
 
   // On utilise l'historique fourni par le room object
   const chartData = useMemo(() => {
@@ -105,7 +119,7 @@ export function RoomCard({ room }: { room: Room }) {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
                <CardTitle>{room.name}</CardTitle>
-               {getStatusBadge(room.status, room.errorMessage)}
+               {getStatusBadge(room.status, room.errorMessage, room.packetsReceived !== undefined && room.packetsReceived > 0)}
             </div>
             <CardDescription>{room.description}</CardDescription>
             {room.status === "error" && room.errorMessage && (
@@ -217,6 +231,47 @@ export function RoomCard({ room }: { room: Room }) {
             </AreaChart>
           </ChartContainer>
         </div>
+
+        {/* Diagnostics LoRa */}
+        {room.packetsReceived !== undefined && room.packetsReceived > 0 && (
+          <div className="pt-2 border-t border-border/50">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 block">
+              Diagnostic LoRa
+            </span>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div className="flex flex-col items-center p-2 bg-secondary/20 rounded">
+                <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <Signal className="h-3 w-3" />
+                  <span className="text-[10px]">RSSI</span>
+                </div>
+                <span className="text-xs font-bold">{room.rssi} dBm</span>
+              </div>
+              <div className="flex flex-col items-center p-2 bg-secondary/20 rounded">
+                <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <Activity className="h-3 w-3" />
+                  <span className="text-[10px]">SNR</span>
+                </div>
+                <span className="text-xs font-bold">{room.snr} dB</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col items-center p-2 bg-secondary/20 rounded">
+                <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <span className="text-[10px]">Reçus</span>
+                </div>
+                <span className="text-xs font-bold">{room.packetsReceived} pkts</span>
+              </div>
+              <div className="flex flex-col items-center p-2 bg-secondary/20 rounded">
+                <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                  <span className="text-[10px]">Pertes</span>
+                </div>
+                <span className={`text-xs font-bold ${room.packetsLost && room.packetsLost > 0 ? "text-destructive" : "text-green-500"}`}>
+                  {room.packetsLost} ({lossRate}%)
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer avec Preuve d'intégrité */}
         {(room.seq !== undefined || room.hmac) && (

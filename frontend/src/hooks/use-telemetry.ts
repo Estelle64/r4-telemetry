@@ -60,7 +60,11 @@ export function useTelemetry() {
                   temperature: lastPoint.temperature,
                   humidity: lastPoint.humidity,
                   seq: lastBlock.data.seq,
-                  hmac: lastBlock.data.hmac
+                  hmac: lastBlock.data.hmac,
+                  rssi: lastBlock.data.rssi,
+                  snr: lastBlock.data.snr,
+                  packetsLost: lastBlock.data.packetsLost,
+                  packetsReceived: lastBlock.data.packetsReceived
                 } : r
             ));
         })
@@ -104,7 +108,11 @@ export function useTelemetry() {
                 errorMessage: undefined,
                 history: updatedHistory,
                 seq: payload.data.seq,
-                hmac: payload.data.hmac
+                hmac: payload.data.hmac,
+                rssi: payload.data.rssi,
+                snr: payload.data.snr,
+                packetsLost: payload.data.packetsLost,
+                packetsReceived: payload.data.packetsReceived
               };
             }
             return room;

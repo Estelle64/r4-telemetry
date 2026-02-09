@@ -26,18 +26,33 @@ void updateLocalData(float temp, float hum) {
     }
 }
 
-void updateRemoteData(uint8_t sensorId, float temp, float hum) {
+static void updateRemoteSensor(RemoteSensorData &sensor, float temp, float hum, int rssi, int snr, uint8_t sequence) {
+    sensor.temperature = temp;
+    sensor.humidity = hum;
+    sensor.lastUpdate = millis();
+    sensor.rssi = rssi;
+    sensor.snr = snr;
+    
+    // Packet loss detection
+    if (sensor.packetsReceived > 0) {
+        int expected = (sensor.lastSequence + 1) & 0xFF;
+        if (sequence != expected) {
+            int gap = (sequence >= expected) ? (sequence - expected) : (256 - expected + sequence);
+            sensor.packetsLost += gap;
+        }
+    }
+    sensor.lastSequence = sequence;
+    sensor.packetsReceived++;
+}
+
+void updateRemoteData(uint8_t sensorId, float temp, float hum, int rssi, int snr, uint8_t sequence) {
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
         if (sensorId == CAFETERIA_ID) {
             Serial.println("[DataManager] Mise a jour CAFET -> Memoire Partagee");
-            currentState.cafeteria.temperature = temp;
-            currentState.cafeteria.humidity = hum;
-            currentState.cafeteria.lastUpdate = millis();
+            updateRemoteSensor(currentState.cafeteria, temp, hum, rssi, snr, sequence);
         } else if (sensorId == FABLAB_ID) {
             Serial.println("[DataManager] Mise a jour FABLAB -> Memoire Partagee");
-            currentState.fablab.temperature = temp;
-            currentState.fablab.humidity = hum;
-            currentState.fablab.lastUpdate = millis();
+            updateRemoteSensor(currentState.fablab, temp, hum, rssi, snr, sequence);
         } else {
             Serial.print("[DataManager] ID Inconnu ignore: ");
             Serial.println(sensorId);
