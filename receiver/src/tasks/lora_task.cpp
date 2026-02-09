@@ -122,27 +122,30 @@ static void processRxLine(String line) {
 
     if (firstQuote != -1 && lastQuote != -1 && lastQuote > firstQuote) {
         String hexContent = line.substring(firstQuote + 1, lastQuote);
+        int len = hexContent.length();
         
         // Si le RSSI n'a pas été trouvé plus haut (fallback parsing fin de ligne)
         int rssi = lastRssi;
         int snr = lastSnr;
 
-        // Expect: 7 bytes Data + 32 bytes HMAC = 39 bytes => 78 hex chars
-        if (hexContent.length() == 78) { 
-            uint8_t payload[39];
-            hexStringToBytes(hexContent, payload, 39);
+        // On accepte 76 (Time Request) ou 78 (Data Report)
+        if (len == 76 || len == 78) { 
+            int payloadLen = len / 2;
+            uint8_t payload[40]; 
+            hexStringToBytes(hexContent, payload, payloadLen);
 
-            uint8_t dataPart[7];
+            int dataLen = payloadLen - 32;
+            uint8_t dataPart[8];
             uint8_t receivedHash[32];
             
-            memcpy(dataPart, payload, 7);
-            memcpy(receivedHash, payload + 7, 32);
+            memcpy(dataPart, payload, dataLen);
+            memcpy(receivedHash, payload + dataLen, 32);
 
             // Verify HMAC
             uint8_t calculatedHash[32];
             hmac_sha256(
                 (const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET),
-                dataPart, 7, 
+                dataPart, dataLen, 
                 calculatedHash
             );
 
@@ -150,7 +153,7 @@ static void processRxLine(String line) {
                 // Determine TYPE
                 uint8_t msgType = dataPart[1];
 
-                if (msgType == 2) { 
+                if (msgType == 2 && dataLen == 7) { 
                     // --- TYPE 2: DATA REPORT ---
                     uint8_t sensorId = dataPart[0];
                     uint8_t sequence = dataPart[2];
@@ -178,7 +181,7 @@ static void processRxLine(String line) {
                     // Send Standard ACK (Hash)
                     sendAck(receivedHash);
 
-                } else if (msgType == 3) {
+                } else if (msgType == 3 && dataLen == 6) { 
                     // --- TYPE 3: TIME REQUEST ---
                     Serial.println("\n[LoRa] TIME SYNC REQUEST RECEIVED.");
                     
@@ -227,7 +230,7 @@ static void processRxLine(String line) {
                 Serial.println("[LoRa] ERROR: Invalid HMAC signature.");
             }
         } else {
-             Serial.println("[LoRa] Ignored: Invalid length (" + String(hexContent.length()) + ")");
+             Serial.println("[LoRa] Ignored: Invalid length (" + String(len) + ")");
         }
     } else {
         Serial.println("[LoRa] Parse error.");

@@ -111,7 +111,7 @@ void wifiTask(void *pvParameters) {
                 setMqttStatus(true);
                 mqttClient.poll();
 
-                // Retry Handshake si pas fait
+                // --- 1. RETRY HANDSHAKE SI BESOIN ---
                 static unsigned long lastHandshakeRetry = 0;
                 if (millis() - lastHandshakeRetry > 10000) {
                     lastHandshakeRetry = millis();
@@ -127,71 +127,96 @@ void wifiTask(void *pvParameters) {
                     }
                 }
 
+                // --- 2. LOGIQUE DE PUBLICATION ---
+                static uint32_t lastPublishedPacketsFablab = 0;
+                static float lastPublishedTempCafet = -100.0;
+                static unsigned long lastCafetPubTime = 0;
+                static bool fablabWasStale = false;
+
                 SystemData data = getSystemData();
+                unsigned long now = millis();
+                const unsigned long LORA_TIMEOUT = 60000;
+                const unsigned long CAFET_PUB_INTERVAL = 30000; // 30s pour le local
 
-                // 1. Publication Locale (Cafeteria)
+                // --- 2.1 Publication Locale (Cafeteria) ---
                 if (isMqttHandshakeDone("cafeteria") && !isnan(data.localTemperature)) {
-                    uint32_t seq = getNextMqttSequence("cafeteria");
-                    StaticJsonDocument<512> doc;
-                    doc["humidity"] = String(data.localHumidity, 1);
-                    doc["loraStatus"] = data.loraModuleConnected;
-                    
-                    // Diagnostics LoRa (si reçus via LoRa)
-                    if (data.cafeteria.packetsReceived > 0) {
-                        doc["packetsLost"] = data.cafeteria.packetsLost;
-                        doc["packetsReceived"] = data.cafeteria.packetsReceived;
-                        doc["rssi"] = data.cafeteria.rssi;
-                    }
-                    
-                    doc["seq"] = seq;
-                    
-                    if (data.cafeteria.packetsReceived > 0) {
-                        doc["snr"] = data.cafeteria.snr;
-                    }
+                    // On publie si: > 30s écoulées OU changement temp > 0.2°C
+                    bool timeToPub = (now - lastCafetPubTime > CAFET_PUB_INTERVAL);
+                    bool tempChanged = (abs(data.localTemperature - lastPublishedTempCafet) > 0.2);
 
-                    doc["source"] = "cafeteria";
-                    doc["temperature"] = String(data.localTemperature, 1);
-                    
-                    String payload;
-                    serializeJson(doc, payload);
-                    uint8_t hmac_res[32];
-                    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
-                                (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
-                    doc["hmac"] = hashToString(hmac_res);
-                    payload = "";
-                    serializeJson(doc, payload);
-                    
-                    mqttClient.beginMessage(MQTT_TOPIC_CAFET, false, 1);
-                    mqttClient.print(payload);
-                    mqttClient.endMessage();
+                    if (timeToPub || tempChanged) {
+                        uint32_t seq = getNextMqttSequence("cafeteria");
+                        StaticJsonDocument<512> doc;
+                        doc["humidity"] = String(data.localHumidity, 1);
+                        doc["loraStatus"] = data.loraModuleConnected;
+                        doc["seq"] = seq;
+                        doc["source"] = "cafeteria";
+                        doc["temperature"] = String(data.localTemperature, 1);
+                        
+                        String payload;
+                        serializeJson(doc, payload);
+                        uint8_t hmac_res[32];
+                        hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
+                                    (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
+                        doc["hmac"] = hashToString(hmac_res);
+                        payload = "";
+                        serializeJson(doc, payload);
+                        
+                        mqttClient.beginMessage(MQTT_TOPIC_CAFET, false, 1);
+                        mqttClient.print(payload);
+                        mqttClient.endMessage();
+
+                        lastCafetPubTime = now;
+                        lastPublishedTempCafet = data.localTemperature;
+                        Serial.println("[MQTT] Update Cafet (Local) envoyé.");
+                    }
                 }
 
-                // 2. Publication Distante (Fablab)
-                if (isMqttHandshakeDone("fablab") && !isnan(data.fablab.temperature)) {
-                    uint32_t seq = getNextMqttSequence("fablab");
-                    StaticJsonDocument<512> doc;
-                    doc["humidity"] = String(data.fablab.humidity, 1);
-                    doc["loraStatus"] = data.loraModuleConnected;
-                    doc["packetsLost"] = data.fablab.packetsLost;
-                    doc["packetsReceived"] = data.fablab.packetsReceived;
-                    doc["rssi"] = data.fablab.rssi;
-                    doc["seq"] = seq;
-                    doc["snr"] = data.fablab.snr;
-                    doc["source"] = "fablab";
-                    doc["temperature"] = String(data.fablab.temperature, 1);
-                    
-                    String payload;
-                    serializeJson(doc, payload);
-                    uint8_t hmac_res[32];
-                    hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
-                                (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
-                    doc["hmac"] = hashToString(hmac_res);
-                    payload = "";
-                    serializeJson(doc, payload);
-                    
-                    mqttClient.beginMessage(MQTT_TOPIC_FABLAB, false, 1);
-                    mqttClient.print(payload);
-                    mqttClient.endMessage();
+                // --- 2.2 Publication Distante (Fablab) ---
+                bool fablabIsStale = (now - data.fablab.lastUpdate > LORA_TIMEOUT) && (data.fablab.packetsReceived > 0);
+
+                if (isMqttHandshakeDone("fablab")) {
+                    if (!isnan(data.fablab.temperature)) {
+                        // On publie si: Nouveau paquet LoRa reçu OU changement d'état stale (Offline)
+                        if (data.fablab.packetsReceived > lastPublishedPacketsFablab || fablabIsStale != fablabWasStale) {
+                            
+                            uint32_t seq = getNextMqttSequence("fablab");
+                            StaticJsonDocument<512> doc;
+                            doc["humidity"] = String(data.fablab.humidity, 1);
+                            doc["loraStatus"] = fablabIsStale ? false : data.loraModuleConnected;
+                            doc["packetsLost"] = data.fablab.packetsLost;
+                            doc["packetsReceived"] = data.fablab.packetsReceived;
+                            doc["rssi"] = data.fablab.rssi;
+                            doc["seq"] = seq;
+                            doc["snr"] = data.fablab.snr;
+                            doc["source"] = "fablab";
+                            doc["temperature"] = String(data.fablab.temperature, 1);
+                            
+                            String payload;
+                            serializeJson(doc, payload);
+                            uint8_t hmac_res[32];
+                            hmac_sha256((const uint8_t*)LORA_SHARED_SECRET, strlen(LORA_SHARED_SECRET), 
+                                        (const uint8_t*)payload.c_str(), payload.length(), hmac_res);
+                            doc["hmac"] = hashToString(hmac_res);
+                            payload = "";
+                            serializeJson(doc, payload);
+                            
+                            mqttClient.beginMessage(MQTT_TOPIC_FABLAB, false, 1);
+                            mqttClient.print(payload);
+                            mqttClient.endMessage();
+
+                            lastPublishedPacketsFablab = data.fablab.packetsReceived;
+                            fablabWasStale = fablabIsStale;
+                            Serial.println("[MQTT] Update Fablab (LoRa) envoyé.");
+                        }
+                    }
+                } else {
+                    // Petit log de debug pour voir si le handshake bloque
+                    static unsigned long lastHandshakeLog = 0;
+                    if (now - lastHandshakeLog > 15000) {
+                        Serial.println("[MQTT] En attente du Handshake Fablab...");
+                        lastHandshakeLog = now;
+                    }
                 }
             }
         }
