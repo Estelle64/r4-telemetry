@@ -1,186 +1,146 @@
 # R4-Telemetry
 
-This IoT system is designed to monitor environmental conditions across different campus locations, specifically bridging the gap between areas with network coverage and "white zones" without Wi-Fi.
+**Bridging the gap between network-covered areas and white zones with LoRa and Arduino R4 WiFi.**
 
 <p align="center">
   <img src="./doc/r4t_logo.svg" alt="Logo" width="200">
 </p>
 
-## Context
-
-### Current State
-
-The university campus infrastructure provides Wi-Fi coverage across most public areas, such as the cafeteria. However, specific strategic locations like the FabLab are situated in "white zones" where network signals are non-existent. Currently, environmental data (temperature and humidity) from these remote zones cannot be monitored in real-time without physical presence, leading to a lack of centralized data for the campus technical facilities.
-
-### Need
-
-- Collect environmental metrics from disconnected areas (white zones).
-- Bridge data from a non-IP protocol (LoRa) to a networked gateway.
-- Ensure the authenticity of the data gathered at the edge before it reaches the database.
-- Provide a secure and immutable storage method to prevent historical data tampering.
-- Display real-time updates through a centralized dashboard accessible via the campus network.
-
-### Gains
-
-- **Operational Range**: The use of LoRa modules combined with high-gain antennas allows for data transmission over distances that Wi-Fi cannot reach.
-
-- **Energy Autonomy**: Integration of battery power and efficient hardware management ensures the remote node can operate independently of the electrical grid.
-
-- **Data Integrity**: The use of HMAC signatures guarantees that the data received by the backend has not been altered during transit or spoofed by an unauthorized device.
-
-- **Auditability**: The blockchain-inspired storage logic in MongoDB creates a verifiable chain of custody for all environmental logs.
-
-- **User Experience**: The local LED matrix menu provides immediate feedback for on-site users, while the WebSocket-based frontend ensures sub-second latency for remote monitoring.
-
-## Hardware
-
-### Components List
-
-| Component            | Reference           | Quantity |
-| -------------------- | ------------------- | -------- |
-| Microcontroller      | Arduino UNO R4 Wifi | 2        |
-| LoRa Module          | Grove Wio-E5        | 2        |
-| Environmental Sensor | DHT-22              | 2        |
-| Buttons              | Grove Dual Button   | 2        |
-| Power Supply         | USB Power Bank      | 2        |
-
-### Wiring Schema
-
-## Software
-
-### Architecture
-
-#### Receiver
-
 <p align="center">
-  <img src="./doc/receiver_schema.png" />
+  <img src="https://img.shields.io/badge/Arduino-00979D?style=for-the-badge&logo=arduino&logoColor=white" alt="Arduino">
+  <img src="https://img.shields.io/badge/React-202327?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React">
+  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
 </p>
 
-#### Sender
+---
+
+## Project Overview
+
+### Context
+University campus infrastructure typically provides Wi-Fi coverage across most public areas. However, specific strategic locations like the FabLab are situated in "white zones" where network signals are non-existent. This project provides a real-time environmental monitoring solution for these disconnected zones.
+
+### Core Objectives
+* **Data Collection**: Gather temperature and humidity metrics from isolated areas.
+* **Protocol Bridging**: Transition data from a non-IP protocol (LoRa) to a networked gateway.
+* **Edge Security**: Ensure the authenticity of gathered data before it reaches the infrastructure.
+* **Integrity**: Provide a secure and immutable storage method to prevent historical data tampering.
+* **Real-time Visualization**: Display updates through a centralized dashboard accessible via the campus network.
+
+### Strategic Gains
+* **Operational Range**: LoRa modules combined with high-gain antennas allow for transmission over distances that Wi-Fi cannot reach.
+* **Energy Autonomy**: Efficient hardware management and FreeRTOS task scheduling ensure independent operation.
+* **Data Authenticity**: HMAC signatures guarantee that received data is authorized and unaltered.
+* **Auditability**: Blockchain-inspired storage logic in MongoDB creates a verifiable chain of custody.
+
+---
+
+## Tech Stack
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Edge Hardware** | Arduino UNO R4 WiFi, Grove Wio-E5 (LoRa), DHT-22 |
+| **Edge Software** | C++, FreeRTOS, HMAC Cryptography |
+| **Infrastructure** | Docker, Mosquitto (MQTT), MongoDB |
+| **Backend** | Node.js, Express, WebSockets |
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, Recharts |
+
+---
+
+## System Architecture
+
+### Software Design
+The system relies on a distributed architecture where the Gateway acts as a translator between the physical LoRa layer and the digital IP layer.
+
+#### Component Schemas
+* **Receiver/Gateway**: Manages LoRa reception and Wi-Fi/MQTT bridging.
+* **Sender/Node**: Handles sensor acquisition and cryptographic signing.
+* **Containerized Services**: Orchestrates the database, broker, and web adapter.
 
 <p align="center">
-  <img src="./doc/sender_schema.png" />
+  <img src="./doc/services_schema.png" width="800" alt="Services Schema" />
 </p>
 
-#### Containers
+---
 
-<p align="center">
-  <img src="./doc/services_schema.png" />
-</p>
+## Security Protocol
 
-### Security
+The system implements a multi-layer security protocol to ensure the integrity and authenticity of environmental data.
 
-The system implements a multi-layer security protocol to ensure the integrity, authenticity, and immutability of the environmental data from the edge to the database.
+### 1. Data Authenticity (HMAC-SHA256)
+To prevent data spoofing, every payload sent to the Backend is signed using a Hash-based Message Authentication Code.
+* The Gateway generates a signature using a shared secret key and the message content.
+* The Adapter recalculates the signature upon reception.
+* Mismatched signatures result in immediate packet disposal.
 
-**Data Authenticity (HMAC-SHA256)**
+### 2. Anti-Replay Mechanism
+To protect against replay attacks, a sequence counter is integrated into the protocol.
+* Each message includes a strictly increasing sequence number.
+* The Backend maintains a record of the last received counter for each device.
+* Messages with outdated sequence numbers are rejected.
 
-To prevent data spoofing, every payload sent by the Gateway to the Backend is signed using HMAC-SHA256 (Hash-based Message Authentication Code).
+### 3. Data Immutability (Blockchain Ledger)
+Once validated, data is stored in MongoDB using a structure inspired by blockchain technology.
+* **Block Hashing**: Each record contains a cryptographic hash of the entire document.
+* **Chaining**: Every new entry includes the hash of the preceding record.
+* **Verification**: This creates a verifiable chain; if a historical record is modified, the hash chain is broken.
 
-- The Gateway generates a signature using a shared secret key and the message content.
+---
 
-- The Node.js Adapter recalculates the signature upon reception.
-
-- Any payload with a mismatched signature is immediately discarded, ensuring that only authorized Gateways can write to the database.
-
-**Anti-Replay Mechanism (Sequence Numbers)**
-
-To protect the system against replay attacks (where an attacker intercepts and re-transmits a valid signed packet), a Sequence Counter is integrated into the protocol:
-
-- Each message includes a strictly increasing sequence number.
-
-- The Backend maintains a record of the last received counter for each device.
-
-- If an incoming message has a sequence number lower than or equal to the stored value, it is rejected as a potential replay attempt.
-
-**Data Immutability (Blockchain Ledger)**
-
-Once validated, data is stored in MongoDB using a structure inspired by blockchain technology to ensure long-term integrity:
-
-- **Block Hashing**: Each new document (block) contains the data, a timestamp, and a cryptographic hash of the entire record.
-
-- **Chaining**: Every new entry includes the previousHash of the preceding record in the collection.
-
-- **Verification**: This creates a verifiable chain of custody. If a single historical record is modified or deleted, the hash chain is broken, making unauthorized data tampering detectable during audits.
-
-## Instalation
+## Installation
 
 ### Prerequisites
+Ensure the following software is installed:
+* Docker & Docker Compose
+* Node.js (v20+) & NPM
+* Arduino CLI
+* Just (Command Runner)
 
-Before proceeding, ensure the following software is installed on your machine:
+### 1. Hardware Configuration
+Before flashing, modify the `config.h` files in both `sender/` and `receiver/` directories:
+* Set the `LORA_SHARED_SECRET` for HMAC signing.
+* Configure `WIFI_SSID` and `WIFI_PASS` for the Receiver node.
 
-- **Docker & Docker Compose**: To orchestrate the backend services.
-
-- **Node.js & NPM**: To manage adapter and frontend dependencies.
-
-- **Arduino CLI**: To compile and flash the R4 WiFi boards from the terminal.
-
-- **Just**: A command runner used to automate the installation and deployment process.
-
-### Systems (Arduino Setups)
-
-#### Configuration (`config.h`)
-
-Before flashing the boards, you must modify the `config.h` files in both `sender/` and `receiver/` directories:
-
-- `MQTT_SERVER` & `MQTT_PORT`: Define the server IP and ports used by the mqtt broker
-- `LORA_SHARED_SECRET`: Define the HMAC shared secret key.
-- `WIFI_SSID` & `WIFI_PASS`: Set your SSID and Password in the Receiver's config.
-
-#### Dependencies installation
-
-Run:
-
+**Install Dependencies:**
 ```bash
 just setup-arduino
 ```
 
-(to install all necessaries arduino libraries)
-
-#### Flashing
-
-Identify the serial ports of your Arduinos using `just ports`, then flash the respective sketches:
-
-- For the **Sender** (FabLab):
-
-  ```bash
-  just sender COM*
-  ```
-
-- For the **Receiver** (Gateway):
-  ```bash
-  just receiver COM*
-  ```
-
-### Server (Infrastructure Setup)
-
-The server side runs an MQTT broker, a MongoDB instance, a Node.js adapter, and an Nginx frontend.
-
-#### Configuration (`.env`)
-
-The backend requires a specific environment variable to let the frontend talk to the adapter. Create a `.env` file in the root directory and add:
-
-- `VITE_WS_URL=ws://` and your servers IP adress
-
-#### Dependencies installation
-
-Run
-
+**Flash Boards:**
 ```bash
-just install
+# Identify your ports
+just ports
+
+# Flash the Sender
+just sender COM*
+
+# Flash the Receiver
+just receiver COM*
 ```
 
-to install all node modules
+### 2. Infrastructure Setup
 
-#### Docker compose
+**Environment Variables:**
+Create a `.env` file in the root directory:
+```env
+VITE_WS_URL=ws://[YOUR_SERVER_IP]:[PORT]
+```
 
-Finally run
-
+**Launch Services:**
 ```bash
+# Install all node modules
+just install
+
+# Start all containers
 just up
 ```
 
-to launch all needed docker containers with there configaration
+---
 
 ## Usage
+Navigate to your server IP address on port 80 in a web browser. The dashboard will automatically connect to the WebSocket stream to display live telemetry and historical data.
 
-Now you will be able to navigate through your server IP adress on port 80 in your browser to see gathered data.
+---
+<p align="center"><i>Developed with love 💖 - CESI.</i></p>
+
